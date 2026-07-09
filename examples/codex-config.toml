@@ -1,0 +1,31 @@
+# Example only. Adjust command path for your local checkout.
+#
+# This keeps Strava MCP access behind the bridge. By default the bridge only
+# allows initialize, notifications/initialized, and tools/list. tools/call is
+# blocked unless you explicitly pass --allow-tool.
+#
+# If get_activity_streams is allowed and --stream-output-dir is omitted, stream
+# files are saved under:
+# ~/Library/Application Support/strava-mcp-bridge/streams/
+
+[mcp_servers.strava_bridge]
+command = "node"
+args = [
+  "/absolute/path/to/strava-mcp-bridge/bin/strava-mcp-bridge.js",
+  "--auth",
+  "bridge-keychain",
+  "--allow-tool",
+  "health,eligibility"
+]
+
+# Training sync example:
+#
+# args = [
+#   "/absolute/path/to/strava-mcp-bridge/bin/strava-mcp-bridge.js",
+#   "--auth",
+#   "bridge-keychain",
+#   "--allow-tool",
+#   "health,eligibility,list_activities,get_activity_streams,get_activity_performance",
+#   "--stream-output-dir",
+#   "/absolute/path/to/strava-data/mcp-streams"
+# ]

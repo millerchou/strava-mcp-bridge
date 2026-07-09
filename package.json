@@ -1,0 +1,54 @@
+{
+  "name": "strava-mcp-bridge",
+  "version": "0.1.0",
+  "description": "Local stdio bridge that lets Codex, OpenCode, and other stdio MCP clients use the official Strava MCP server.",
+  "type": "commonjs",
+  "author": "millerchou <31427924+millerchou@users.noreply.github.com>",
+  "homepage": "https://github.com/millerchou/strava-mcp-bridge#readme",
+  "bugs": {
+    "url": "https://github.com/millerchou/strava-mcp-bridge/issues"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/millerchou/strava-mcp-bridge.git"
+  },
+  "bin": {
+    "strava-mcp-bridge": "./bin/strava-mcp-bridge.js"
+  },
+  "scripts": {
+    "build:keychain-helper": "sh scripts/build-keychain-helper.sh",
+    "setup": "npm run build:keychain-helper",
+    "postinstall": "node scripts/postinstall.js",
+    "test": "node --test"
+  },
+  "files": [
+    "bin/strava-mcp-bridge.js",
+    "examples/",
+    "native/",
+    "scripts/",
+    "skills/",
+    "src/",
+    "CHANGELOG.md",
+    "LICENSE",
+    "README.md",
+    "SECURITY.md",
+    "THREAT_MODEL.md"
+  ],
+  "os": [
+    "darwin"
+  ],
+  "cpu": [
+    "arm64"
+  ],
+  "keywords": [
+    "mcp",
+    "strava",
+    "codex",
+    "opencode",
+    "claude-code"
+  ],
+  "license": "MIT",
+  "engines": {
+    "node": ">=20.11"
+  }
+}
