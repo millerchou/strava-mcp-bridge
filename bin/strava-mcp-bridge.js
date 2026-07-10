@@ -15,21 +15,26 @@ const {
   createBridgeCredentialManager,
   createTokenProvider,
   credentialMetadata,
+  nativeKeychainHelperPath,
 } = require("../src/auth");
+const {
+  DEFAULT_ENDPOINT,
+  DEFAULT_PROTOCOL_VERSION,
+  assertOfficialEndpoint,
+} = require("../src/constants");
 const { StravaMcpHttpClient } = require("../src/upstream");
 const { createPolicy } = require("../src/policy");
 const { defaultDataDir, expandPath, resolveDataPaths } = require("../src/paths");
+const { pruneStreamFiles } = require("../src/stream_store");
 const {
   buildCodexConfigToml,
   classifyBootstrapError,
   credentialState,
   keychainDialogNotice,
+  refreshOrReimportCredential,
   toolsForBootstrap,
   toolsForProfile,
 } = require("../src/bootstrap");
-
-const DEFAULT_ENDPOINT = "https://mcp.strava.com/mcp";
-const DEFAULT_PROTOCOL_VERSION = "2025-06-18";
 
 function printHelp() {
   process.stdout.write(`strava-mcp-bridge
@@ -45,9 +50,11 @@ Usage:
   strava-mcp-bridge auth status [options]
   strava-mcp-bridge auth remove [options]
   strava-mcp-bridge config codex [options]
+  strava-mcp-bridge streams prune [options]
 
 Options:
   --endpoint <url>              Upstream MCP URL. Default: ${DEFAULT_ENDPOINT}
+  --allow-endpoint-override     Allow a non-default MCP endpoint. Diagnostic only.
   --protocol-version <version>  MCP protocol version. Default: ${DEFAULT_PROTOCOL_VERSION}
   --token-endpoint <url>        OAuth token endpoint. Default: ${DEFAULT_TOKEN_ENDPOINT}
   --allow-token-endpoint-override
@@ -89,7 +96,8 @@ Auth modes:
     It does not print or persist the token.
 
 Default safety:
-  initialize, notifications/initialized, and tools/list are allowed.
+  MCP lifecycle methods, ping, cancellation/progress notifications, JSON-RPC
+  responses, and tools/list are allowed.
   tools/call is blocked unless a tool name is explicitly allowed.
 
 First-time setup:
@@ -136,6 +144,7 @@ Options:
   --stream-output-dir <path>    Include a stream file sink in the Codex snippet.
   --json                        Print machine-readable JSON.
   --endpoint <url>              Upstream MCP URL. Default: ${DEFAULT_ENDPOINT}
+  --allow-endpoint-override     Allow a non-default MCP endpoint. Diagnostic only.
   --token-endpoint <url>        OAuth token endpoint. Default: ${DEFAULT_TOKEN_ENDPOINT}
   --bridge-keychain-service <s> Bridge-owned Keychain service name.
   --keychain-timeout-ms <n>     Native Keychain helper timeout in milliseconds.
@@ -155,6 +164,7 @@ Claude Code, Codex, MCP config, or Keychain credentials.
 Options:
   --json                        Print machine-readable JSON.
   --endpoint <url>              Upstream MCP URL. Default: ${DEFAULT_ENDPOINT}
+  --allow-endpoint-override     Allow a non-default MCP endpoint. Diagnostic only.
   --bridge-keychain-service <s> Bridge-owned Keychain service name.
   --keychain-timeout-ms <n>     Native Keychain helper timeout in milliseconds.
 `);
@@ -212,10 +222,31 @@ Options:
   --claim-on-import             Explicitly refresh immediately after import.
   --json                        Print machine-readable JSON.
   --endpoint <url>              Upstream MCP URL. Default: ${DEFAULT_ENDPOINT}
+  --allow-endpoint-override     Allow a non-default MCP endpoint. Diagnostic only.
   --token-endpoint <url>        OAuth token endpoint. Default: ${DEFAULT_TOKEN_ENDPOINT}
   --bridge-keychain-service <s> Bridge-owned Keychain service name.
   --keychain-timeout-ms <n>     Native Keychain helper timeout in milliseconds.
   --oauth-timeout-ms <n>        OAuth refresh timeout in milliseconds.
+`);
+}
+
+function printStreamsHelp() {
+  process.stdout.write(`strava-mcp-bridge streams prune
+
+Usage:
+  strava-mcp-bridge streams prune --older-than-days <n> [options]
+
+Lists numeric activity stream JSON files at or older than the retention cutoff.
+This is a dry run unless --yes is supplied. Symlinks and non-activity files are
+never removed.
+
+Options:
+  --older-than-days <n>         Required non-negative retention age in days.
+  --yes                         Remove the listed files.
+  --data-dir <path>             Local data directory. Default: ${defaultDataDir()}
+  --stream-output-dir <path>    Stream directory. Default: <data-dir>/streams
+  --json                        Print machine-readable JSON.
+  --help                        Show this help.
 `);
 }
 
@@ -233,6 +264,7 @@ function parseArgs(argv) {
       process.env.STRAVA_MCP_BRIDGE_KEYCHAIN_SERVICE || DEFAULT_BRIDGE_KEYCHAIN_SERVICE,
     claimImportedCredential: process.env.STRAVA_MCP_CLAIM_ON_IMPORT === "1",
     allowTokenEndpointOverride: process.env.STRAVA_MCP_ALLOW_TOKEN_ENDPOINT_OVERRIDE === "1",
+    allowEndpointOverride: process.env.STRAVA_MCP_ALLOW_ENDPOINT_OVERRIDE === "1",
     refreshSkewMs: Number(process.env.STRAVA_MCP_REFRESH_SKEW_SECONDS || "") > 0
       ? Number(process.env.STRAVA_MCP_REFRESH_SKEW_SECONDS) * 1000
       : DEFAULT_REFRESH_SKEW_MS,
@@ -256,6 +288,7 @@ function parseArgs(argv) {
     skipSetup: false,
     yes: false,
     profile: "minimal",
+    olderThanDays: null,
   };
 
   for (let i = 0; i < argv.length; i += 1) {
@@ -266,6 +299,10 @@ function parseArgs(argv) {
     }
     if (arg === "--endpoint") {
       config.endpoint = requireValue(argv, ++i, arg);
+      continue;
+    }
+    if (arg === "--allow-endpoint-override") {
+      config.allowEndpointOverride = true;
       continue;
     }
     if (arg === "--protocol-version") {
@@ -348,6 +385,14 @@ function parseArgs(argv) {
       config.profile = requireValue(argv, ++i, arg);
       continue;
     }
+    if (arg === "--older-than-days") {
+      const days = Number(requireValue(argv, ++i, arg));
+      if (!Number.isFinite(days) || days < 0) {
+        throw new Error(`${arg} must be a non-negative number`);
+      }
+      config.olderThanDays = days;
+      continue;
+    }
     throw new Error(`Unknown option: ${arg}`);
   }
 
@@ -409,6 +454,10 @@ async function main() {
     runConfigCommand(argv.slice(1));
     return;
   }
+  if (argv[0] === "streams") {
+    runStreamsCommand(argv.slice(1));
+    return;
+  }
 
   const config = parseArgs(argv);
   if (config.help) {
@@ -417,6 +466,7 @@ async function main() {
   }
 
   configureKeychainTimeout(config.keychainTimeoutMs);
+  assertConfiguredEndpoint(config);
 
   const tokenProvider = createTokenProvider({
     mode: config.authMode,
@@ -434,6 +484,7 @@ async function main() {
     protocolVersion: config.protocolVersion,
     tokenProvider,
     requestTimeoutMs: config.upstreamTimeoutMs,
+    allowEndpointOverride: config.allowEndpointOverride,
   });
 
   const policy = createPolicy({
@@ -462,6 +513,7 @@ async function runBootstrapCommand(argv) {
   }
 
   configureKeychainTimeout(config.keychainTimeoutMs);
+  assertConfiguredEndpoint(config);
 
   if (!config.jsonOutput) {
     process.stdout.write(keychainDialogNotice({
@@ -473,7 +525,7 @@ async function runBootstrapCommand(argv) {
 
   const result = {
     ok: false,
-    helper: inspectNativeHelper(),
+    helper: { path: null, found: false },
     credential: null,
     state: null,
     action: "none",
@@ -483,6 +535,7 @@ async function runBootstrapCommand(argv) {
 
   try {
     const bootstrapAllowTools = toolsForBootstrap(config.allowTools, config.profile);
+    result.helper = inspectNativeHelper();
 
     if (!config.skipSetup && !result.helper.found) {
       runSetup();
@@ -507,12 +560,13 @@ async function runBootstrapCommand(argv) {
     } else if (state.code === "expired-refreshable" ||
         state.code === "refresh-due" ||
         state.code === "unknown-expiry") {
-      await manager.getAccessToken({ forceRefresh: true });
+      result.action = await refreshOrReimportCredential(manager, {
+        claimImportedCredential: shouldClaimDuringImport(argv),
+      });
       metadata = manager.readBridgeCredentialMetadata();
       state = credentialState(metadata, {
         refreshSkewSeconds: Math.trunc(config.refreshSkewMs / 1000),
       });
-      result.action = "refreshed";
     } else {
       result.action = "already-ready";
     }
@@ -546,6 +600,7 @@ function runDoctorCommand(argv) {
     return;
   }
   configureKeychainTimeout(config.keychainTimeoutMs);
+  assertConfiguredEndpoint(config);
 
   const result = {
     ok: false,
@@ -554,13 +609,14 @@ function runDoctorCommand(argv) {
       arch: process.arch,
       supported: process.platform === "darwin" && process.arch === "arm64",
     },
-    helper: inspectNativeHelper(),
+    helper: { path: null, found: false },
     credential: null,
     state: null,
     error: null,
   };
 
   try {
+    result.helper = inspectNativeHelper();
     const manager = createManager(config);
     const metadata = manager.readBridgeCredentialMetadata();
     const state = credentialState(metadata, {
@@ -636,6 +692,7 @@ async function runAuthCommand(argv) {
 
   if (command === "import") {
     try {
+      assertConfiguredEndpoint(config);
       const manager = createManager(config);
       const credential = await manager.importFromClaudeCode({
         claimImportedCredential: shouldClaimDuringImport(argv),
@@ -653,6 +710,7 @@ async function runAuthCommand(argv) {
 
   if (command === "status") {
     try {
+      assertConfiguredEndpoint(config);
       const manager = createManager(config);
       const metadata = manager.readBridgeCredentialMetadata();
       printCredentialMetadata({
@@ -726,6 +784,40 @@ function runAuthRemove(config) {
   } catch (error) {
     printAuthFailure("remove", error, config);
   }
+}
+
+function runStreamsCommand(argv) {
+  const command = argv[0];
+  if (!command || command === "--help" || command === "-h") {
+    printStreamsHelp();
+    return;
+  }
+  if (command !== "prune") {
+    throw new Error(`Unknown streams command: ${command}`);
+  }
+
+  const config = parseArgs(argv.slice(1));
+  if (config.help) {
+    printStreamsHelp();
+    return;
+  }
+  if (config.olderThanDays === null) {
+    throw new Error("streams prune requires --older-than-days");
+  }
+
+  const result = pruneStreamFiles({
+    directory: config.streamOutputDir,
+    olderThanDays: config.olderThanDays,
+    remove: config.yes,
+  });
+  if (config.jsonOutput) {
+    process.stdout.write(`${JSON.stringify(result, null, 2)}\n`);
+    return;
+  }
+
+  process.stdout.write(`${result.dryRun ? "Would remove" : "Removed"} ${result.files.length} stream file(s) from ${result.directory}\n`);
+  for (const file of result.files) process.stdout.write(`${file}\n`);
+  if (result.dryRun) process.stdout.write("Re-run with --yes to remove them.\n");
 }
 
 function createManager(config) {
@@ -808,8 +900,13 @@ function inspectNativeHelper() {
 }
 
 function nativeHelperPath() {
-  return process.env.STRAVA_MCP_KEYCHAIN_HELPER ||
-    path.join(__dirname, "..", "bin", "strava-keychain-helper");
+  return nativeKeychainHelperPath();
+}
+
+function assertConfiguredEndpoint(config) {
+  assertOfficialEndpoint(config.endpoint, {
+    allowOverride: config.allowEndpointOverride,
+  });
 }
 
 function currentBridgeScriptPath() {

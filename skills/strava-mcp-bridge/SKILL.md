@@ -18,8 +18,11 @@ Grok Build, through `strava-mcp-bridge`.
   arrays are written to local files instead of being returned to the agent
   context.
 - For non-stream JSON tool responses, expect the bridge to redact common
-  location-like fields before returning content. Still keep new tools disabled
-  until their schemas and privacy impact are reviewed.
+  location-like fields before returning content. Opaque text/content blocks
+  fail closed. Still keep new tools disabled until their schemas and privacy
+  impact are reviewed.
+- Never add endpoint, token-endpoint, or Keychain-helper override flags to MCP
+  config unless the user explicitly requests controlled diagnosis.
 
 ## First-Time Flow
 
@@ -39,7 +42,9 @@ Grok Build, through `strava-mcp-bridge`.
    Then, inside Claude Code, run `/mcp`, select `strava`, and complete the
    OAuth authorization. Claude Code can use Anthropic, Ollama, or another
    compatible model backend; the important part is that Claude Code completes
-   the official Strava MCP OAuth flow.
+   the official Strava MCP OAuth flow. A paid Claude subscription is not
+   required when a compatible backend is used; the official Strava MCP still
+   requires an eligible Strava subscription.
 
 3. Bootstrap the bridge-owned credential:
 
@@ -96,8 +101,11 @@ fields. Upstream HTTP error responses and local policy blocks do not carry
   Keychain prompt. Retry after the user allows access.
 - `keychain-access-denied`: macOS refused the Keychain access request (a denied
   dialog, a locked login Keychain, or a session that cannot show dialogs);
-  nothing was read. Retry in a GUI session and ask the user to click Allow or
-  Always Allow.
+  nothing was read. Retry in a GUI session. Use Allow for
+  `Claude Code-credentials`; Always Allow is optional only for the dedicated
+  bridge helper and carries the documented same-user risk.
+- `helper-override-disabled`: unset `STRAVA_MCP_KEYCHAIN_HELPER`, or pair it with
+  `STRAVA_MCP_ALLOW_KEYCHAIN_HELPER_OVERRIDE=1` only for controlled diagnosis.
 - `claude-code-credential-missing`: Claude Code has not stored a usable local
   credential. Ask the user to open Claude Code and authorize Strava MCP through
   `/mcp`, then rerun `strava-mcp-bridge bootstrap`.
@@ -131,3 +139,10 @@ After successful bootstrap, normal MCP calls should use `--auth
 bridge-keychain`. The bridge reads and refreshes its own macOS Keychain item and
 does not need Claude Code unless the bridge-owned refresh token is missing,
 revoked, or rejected by Strava.
+
+For local stream retention, preview before deleting:
+
+```bash
+strava-mcp-bridge streams prune --older-than-days 30
+strava-mcp-bridge streams prune --older-than-days 30 --yes
+```

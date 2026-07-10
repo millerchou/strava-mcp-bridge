@@ -4,6 +4,26 @@ All notable changes to this project are documented in this file. The format is
 based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and this
 project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Added
+
+- Complete multi-event SSE parsing, MCP session reinitialization, session
+  deletion on shutdown, and protocol-safe ping/cancellation/response handling.
+- Atomic, symlink-safe stream storage plus dry-run retention pruning.
+- Node.js 22/24 CI and npm OIDC trusted-publishing workflow.
+
+### Changed
+
+- Pin official MCP/OAuth endpoints by default and bind refresh grants to the MCP
+  resource.
+- Fail closed for opaque tool-response content and sanitize upstream errors.
+- Restrict native Keychain service names and require unlocked-device access.
+- Re-import an explicitly re-authorized Claude credential when bootstrap detects
+  a rejected bridge refresh chain.
+- Clarify Strava subscription, Claude subscription, OAuth identity, and
+  item-specific Keychain permission behavior.
+
 ## [0.1.0] - 2026-07-08
 
 ### Added

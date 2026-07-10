@@ -5,6 +5,9 @@ const { jsonRpcError } = require("./errors");
 const ALWAYS_ALLOWED_METHODS = new Set([
   "initialize",
   "notifications/initialized",
+  "notifications/cancelled",
+  "notifications/progress",
+  "ping",
   "tools/list",
 ]);
 
@@ -41,6 +44,9 @@ function createPolicy({ allowTools = [] } = {}) {
     },
 
     evaluate(message) {
+      if (isJsonRpcResponse(message)) {
+        return { allowed: true };
+      }
       if (!message || message.jsonrpc !== "2.0" || typeof message.method !== "string") {
         return {
           allowed: false,
@@ -113,7 +119,31 @@ function evaluateActivityStreamsCall(message) {
     };
   }
 
-  return { allowed: true };
+  const normalizedStreams = streams.map((stream) => stream.trim().toLowerCase());
+  return {
+    allowed: true,
+    message: {
+      ...message,
+      params: {
+        ...message.params,
+        arguments: {
+          ...args,
+          streams: normalizedStreams,
+        },
+      },
+    },
+  };
+}
+
+function isJsonRpcResponse(message) {
+  return Boolean(
+    message &&
+    message.jsonrpc === "2.0" &&
+    message.id !== undefined &&
+    typeof message.method !== "string" &&
+    (Object.prototype.hasOwnProperty.call(message, "result") ||
+      Object.prototype.hasOwnProperty.call(message, "error")),
+  );
 }
 
 function requestBlocked(message, reason) {

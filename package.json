@@ -48,7 +48,10 @@
     "claude-code"
   ],
   "license": "MIT",
+  "publishConfig": {
+    "access": "public"
+  },
   "engines": {
-    "node": ">=20.11"
+    "node": ">=22"
   }
 }

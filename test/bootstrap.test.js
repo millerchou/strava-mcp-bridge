@@ -7,6 +7,7 @@ const {
   classifyBootstrapError,
   credentialState,
   keychainDialogNotice,
+  refreshOrReimportCredential,
   toolsForBootstrap,
   toolsForProfile,
 } = require("../src/bootstrap");
@@ -25,7 +26,8 @@ test("toolsForBootstrap falls back to profile tools when no explicit tools are g
 test("classifyBootstrapError classifies a denied Keychain dialog", () => {
   const classified = classifyBootstrapError(new Error("SecItemCopyMatching failed (-128)"));
   assert.equal(classified.code, "keychain-access-denied");
-  assert.match(classified.nextAction, /Always Allow/);
+  assert.match(classified.nextAction, /Use Allow for Claude Code-credentials/);
+  assert.match(classified.nextAction, /optional only for the bridge-owned helper/);
 });
 
 test("classifyBootstrapError classifies network failures", () => {
@@ -53,7 +55,7 @@ test("classifyBootstrapError points helper build failures at Xcode Command Line 
   assert.match(classified.nextAction, /xcode-select --install/);
 });
 
-test("keychainDialogNotice names both Keychain items and recommends Always Allow", () => {
+test("keychainDialogNotice distinguishes one-time import from bridge-owned access", () => {
   const notice = keychainDialogNotice({
     bridgeKeychainService: "Strava MCP Bridge Native-credentials",
     claudeCodeKeychainService: "Claude Code-credentials",
@@ -61,7 +63,8 @@ test("keychainDialogNotice names both Keychain items and recommends Always Allow
 
   assert.match(notice, /Claude Code-credentials/);
   assert.match(notice, /Strava MCP Bridge Native-credentials/);
-  assert.match(notice, /Always Allow/);
+  assert.match(notice, /Do not choose "Always Allow" for \/usr\/bin\/security/);
+  assert.match(notice, /same-user risk/);
   assert.match(notice, /upgrade/i);
   assert.doesNotMatch(notice, /accessToken|refreshToken/);
 });
@@ -138,4 +141,24 @@ test("buildCodexConfigToml renders project config without token values", () => {
   assert.match(toml, /"--stream-output-dir"/);
   assert.equal(toml.includes("accessToken"), false);
   assert.equal(toml.includes("refreshToken"), false);
+});
+
+test("refreshOrReimportCredential imports fresh Claude state after stale bridge refresh", async () => {
+  const calls = [];
+  const action = await refreshOrReimportCredential({
+    async getAccessToken(options) {
+      calls.push(["refresh", options]);
+      throw new Error("Strava MCP OAuth refresh failed with HTTP 401: invalid_grant");
+    },
+    async importFromClaudeCode(options) {
+      calls.push(["import", options]);
+    },
+  }, {
+    claimImportedCredential: true,
+  });
+  assert.equal(action, "reimported");
+  assert.deepEqual(calls, [
+    ["refresh", { forceRefresh: true }],
+    ["import", { claimImportedCredential: true }],
+  ]);
 });

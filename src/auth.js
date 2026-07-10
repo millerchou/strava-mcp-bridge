@@ -4,10 +4,10 @@ const fs = require("node:fs");
 const os = require("node:os");
 const path = require("node:path");
 const { execFileSync, spawnSync } = require("node:child_process");
+const { DEFAULT_TOKEN_ENDPOINT } = require("./constants");
 
 const CLAUDE_CODE_KEYCHAIN_SERVICE = "Claude Code-credentials";
 const DEFAULT_BRIDGE_KEYCHAIN_SERVICE = "Strava MCP Bridge Native-credentials";
-const DEFAULT_TOKEN_ENDPOINT = "https://www.strava.com/oauth/mcp/token";
 const DEFAULT_REFRESH_SKEW_MS = 60 * 60 * 1000;
 const DEFAULT_KEYCHAIN_HELPER_TIMEOUT_MS = 120_000;
 const DEFAULT_OAUTH_TIMEOUT_MS = 30_000;
@@ -258,6 +258,7 @@ class BridgeCredentialManager {
       grant_type: "refresh_token",
       refresh_token: credential.refreshToken,
       client_id: credential.clientId,
+      resource: credential.serverUrl,
     });
 
     const requestOptions = {
@@ -603,8 +604,7 @@ function createNativeKeychainStore({ service, account }) {
 }
 
 function runNativeKeychainHelper(command) {
-  const helperPath = process.env.STRAVA_MCP_KEYCHAIN_HELPER ||
-    path.join(__dirname, "..", "bin", "strava-keychain-helper");
+  const helperPath = nativeKeychainHelperPath();
   if (!fs.existsSync(helperPath)) {
     throw new Error(`Native Keychain helper not found at ${helperPath}.`);
   }
@@ -673,7 +673,7 @@ function createSecurityCliKeychainStore({ service, account }) {
       if (account) args.push("-a", account);
       args.push("-s", service);
       try {
-        return execFileSync("security", args, {
+        return execFileSync("/usr/bin/security", args, {
           encoding: "utf8",
           stdio: ["ignore", "pipe", "pipe"],
         });
@@ -694,6 +694,20 @@ function createSecurityCliKeychainStore({ service, account }) {
   };
 }
 
+function nativeKeychainHelperPath() {
+  const override = process.env.STRAVA_MCP_KEYCHAIN_HELPER;
+  if (override) {
+    if (process.env.STRAVA_MCP_ALLOW_KEYCHAIN_HELPER_OVERRIDE !== "1") {
+      throw new Error(
+        "STRAVA_MCP_KEYCHAIN_HELPER is set, but custom helper execution is disabled. " +
+        "Set STRAVA_MCP_ALLOW_KEYCHAIN_HELPER_OVERRIDE=1 only for controlled diagnosis.",
+      );
+    }
+    return path.resolve(override);
+  }
+  return path.join(__dirname, "..", "bin", "strava-keychain-helper");
+}
+
 function assertSupportedPlatform() {
   if (process.platform !== "darwin" || process.arch !== "arm64") {
     throw new Error("strava-mcp-bridge only supports Apple Silicon Macs (darwin arm64)");
@@ -711,6 +725,8 @@ module.exports = {
   createBridgeCredentialManager,
   createTokenProvider,
   credentialMetadata,
+  isRefreshTokenRejected,
+  nativeKeychainHelperPath,
   parseBridgeCredential,
   parseClaudeCodeCredentialForStravaCredential,
   parseClaudeCodeCredentialForStravaToken,

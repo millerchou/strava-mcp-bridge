@@ -10,6 +10,10 @@ test("allows initialization and tools/list by default", () => {
   assert.equal(policy.evaluate({ jsonrpc: "2.0", id: 1, method: "initialize" }).allowed, true);
   assert.equal(policy.evaluate({ jsonrpc: "2.0", id: 2, method: "tools/list" }).allowed, true);
   assert.equal(policy.evaluate({ jsonrpc: "2.0", method: "notifications/initialized" }).allowed, true);
+  assert.equal(policy.evaluate({ jsonrpc: "2.0", id: 3, method: "ping" }).allowed, true);
+  assert.equal(policy.evaluate({ jsonrpc: "2.0", method: "notifications/cancelled" }).allowed, true);
+  assert.equal(policy.evaluate({ jsonrpc: "2.0", method: "notifications/progress" }).allowed, true);
+  assert.equal(policy.evaluate({ jsonrpc: "2.0", id: 4, result: {} }).allowed, true);
 });
 
 test("blocks tools/call by default", () => {
@@ -75,9 +79,12 @@ test("allows get_activity_streams safe stream whitelist", () => {
     method: "tools/call",
     params: {
       name: "get_activity_streams",
-      arguments: { streams: ["time", "heart_rate", "velocity_smooth", "cadence", "altitude", "distance", "temp"] },
+      arguments: { streams: [" time ", "HEART_RATE", "velocity_smooth", "cadence", "altitude", "distance", "temp"] },
     },
   });
 
   assert.equal(decision.allowed, true);
+  assert.deepEqual(decision.message.params.arguments.streams, [
+    "time", "heart_rate", "velocity_smooth", "cadence", "altitude", "distance", "temp",
+  ]);
 });

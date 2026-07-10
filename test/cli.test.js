@@ -66,6 +66,7 @@ test("config codex accumulates repeated --allow-tool flags", () => {
 test("bootstrap rejects an invalid profile before reporting success", () => {
   const result = spawnCli(["bootstrap", "--skip-setup", "--profile", "bogus"], {
     STRAVA_MCP_KEYCHAIN_HELPER: path.join(__dirname, "does-not-exist-helper"),
+    STRAVA_MCP_ALLOW_KEYCHAIN_HELPER_OVERRIDE: "1",
   });
 
   assert.equal(result.status, 1);
@@ -77,11 +78,15 @@ test("bootstrap rejects an invalid profile before reporting success", () => {
 test("auth status reports a classified error instead of a bare exception", () => {
   const helper = path.join(__dirname, "does-not-exist-helper");
 
-  const plain = spawnCli(["auth", "status"], { STRAVA_MCP_KEYCHAIN_HELPER: helper });
+  const helperEnv = {
+    STRAVA_MCP_KEYCHAIN_HELPER: helper,
+    STRAVA_MCP_ALLOW_KEYCHAIN_HELPER_OVERRIDE: "1",
+  };
+  const plain = spawnCli(["auth", "status"], helperEnv);
   assert.equal(plain.status, 1);
   assert.match(plain.stderr, /code: helper-missing/);
 
-  const json = spawnCli(["auth", "status", "--json"], { STRAVA_MCP_KEYCHAIN_HELPER: helper });
+  const json = spawnCli(["auth", "status", "--json"], helperEnv);
   assert.equal(json.status, 1);
   const parsed = JSON.parse(json.stdout);
   assert.equal(parsed.ok, false);
@@ -107,12 +112,78 @@ test("setup --help prints usage instead of building", () => {
 test("bootstrap prints the Keychain dialog notice before touching the Keychain", () => {
   const result = spawnCli(["bootstrap", "--skip-setup"], {
     STRAVA_MCP_KEYCHAIN_HELPER: path.join(__dirname, "does-not-exist-helper"),
+    STRAVA_MCP_ALLOW_KEYCHAIN_HELPER_OVERRIDE: "1",
   });
 
   assert.equal(result.status, 1);
-  assert.match(result.stdout, /Always Allow/);
+  assert.match(result.stdout, /Do not choose "Always Allow" for \/usr\/bin\/security/);
   assert.match(result.stdout, /Claude Code-credentials/);
   assert.match(result.stderr, /helper-missing/);
+});
+
+test("custom upstream endpoint requires an explicit diagnostic override", () => {
+  const rejected = spawnCli(["--endpoint", "https://example.invalid/mcp", "--auth", "env"], {
+    STRAVA_MCP_ACCESS_TOKEN: "fake-token",
+  });
+  assert.equal(rejected.status, 1);
+  assert.match(rejected.stderr, /allow-endpoint-override/);
+
+  const allowed = spawnCli([
+    "--endpoint", "https://example.invalid/mcp",
+    "--allow-endpoint-override",
+    "--auth", "env",
+  ], {
+    STRAVA_MCP_ACCESS_TOKEN: "fake-token",
+  });
+  assert.equal(allowed.status, 0);
+});
+
+test("custom Keychain helper requires an explicit environment opt-in", () => {
+  const result = spawnCli(["auth", "status"], {
+    STRAVA_MCP_KEYCHAIN_HELPER: path.join(__dirname, "does-not-exist-helper"),
+    STRAVA_MCP_ALLOW_KEYCHAIN_HELPER_OVERRIDE: "0",
+  });
+  assert.equal(result.status, 1);
+  assert.match(result.stderr, /helper-override-disabled/);
+});
+
+test("bootstrap classifies a disabled custom helper override", () => {
+  const result = spawnCli(["bootstrap", "--skip-setup", "--json"], {
+    STRAVA_MCP_KEYCHAIN_HELPER: path.join(__dirname, "does-not-exist-helper"),
+    STRAVA_MCP_ALLOW_KEYCHAIN_HELPER_OVERRIDE: "0",
+  });
+  assert.equal(result.status, 1);
+  assert.equal(JSON.parse(result.stdout).error.code, "helper-override-disabled");
+});
+
+test("streams prune is dry-run by default and removes only with --yes", () => {
+  const fs = require("node:fs");
+  const os = require("node:os");
+  const directory = fs.mkdtempSync(path.join(os.tmpdir(), "strava-prune-cli-"));
+  const oldFile = path.join(directory, "123.json");
+  const ignoredFile = path.join(directory, "notes.json");
+  fs.writeFileSync(oldFile, "{}\n");
+  fs.writeFileSync(ignoredFile, "{}\n");
+  fs.utimesSync(oldFile, new Date(0), new Date(0));
+
+  const dryRun = spawnCli([
+    "streams", "prune", "--older-than-days", "1",
+    "--stream-output-dir", directory,
+    "--json",
+  ]);
+  assert.equal(dryRun.status, 0);
+  assert.equal(JSON.parse(dryRun.stdout).dryRun, true);
+  assert.equal(fs.existsSync(oldFile), true);
+
+  const removed = spawnCli([
+    "streams", "prune", "--older-than-days", "1",
+    "--stream-output-dir", directory,
+    "--yes", "--json",
+  ]);
+  assert.equal(removed.status, 0);
+  assert.equal(JSON.parse(removed.stdout).dryRun, false);
+  assert.equal(fs.existsSync(oldFile), false);
+  assert.equal(fs.existsSync(ignoredFile), true);
 });
 
 function spawnCli(args, env) {

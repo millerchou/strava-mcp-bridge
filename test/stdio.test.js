@@ -21,6 +21,7 @@ test("stdio bridge processes requests in order and blocks disallowed calls", asy
       if (message.id === undefined) return null;
       return { jsonrpc: "2.0", id: message.id, result: { ok: true } };
     },
+    async close() {},
   };
 
   const bridgeDone = runStdioBridge({
@@ -57,6 +58,7 @@ test("stdio bridge attaches classified diagnostics to upstream failures", async 
     async send() {
       throw new Error("Native Keychain helper not found at /nonexistent.");
     },
+    async close() {},
   };
 
   const bridgeDone = runStdioBridge({
@@ -72,7 +74,43 @@ test("stdio bridge attaches classified diagnostics to upstream failures", async 
 
   const parsed = outputLines.map((line) => JSON.parse(line));
   assert.equal(parsed.length, 1);
+  assert.equal(parsed[0].id, 7);
   assert.equal(parsed[0].error.code, -32603);
   assert.equal(parsed[0].error.data.code, "helper-missing");
   assert.match(parsed[0].error.data.nextAction, /setup/);
+});
+
+test("stdio bridge reports parse errors, continues, and closes upstream", async () => {
+  const input = new PassThrough();
+  const output = new PassThrough();
+  const outputLines = [];
+  output.on("data", (chunk) => {
+    outputLines.push(...String(chunk).trim().split(/\n/).filter(Boolean));
+  });
+  let closed = 0;
+  const upstream = {
+    async send(message, { onMessage }) {
+      onMessage({
+        jsonrpc: "2.0",
+        method: "notifications/progress",
+        params: { coordinates: [11.1, 22.2] },
+      });
+      return { jsonrpc: "2.0", id: message.id, result: { ok: true } };
+    },
+    async close() {
+      closed += 1;
+    },
+  };
+
+  const done = runStdioBridge({ input, output, upstream, policy: createPolicy() });
+  input.write("{not-json}\n");
+  input.write('{"jsonrpc":"2.0","id":2,"method":"initialize"}\n');
+  input.end();
+  await done;
+
+  const parsed = outputLines.map((line) => JSON.parse(line));
+  assert.equal(parsed[0].error.code, -32700);
+  assert.equal(parsed[1].params.coordinates, "[redacted_by_strava_mcp_bridge]");
+  assert.equal(parsed[2].id, 2);
+  assert.equal(closed, 1);
 });

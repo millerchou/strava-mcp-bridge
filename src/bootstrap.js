@@ -1,5 +1,7 @@
 "use strict";
 
+const { isRefreshTokenRejected } = require("./auth");
+
 const DEFAULT_MINIMAL_TOOLS = [
   "health",
   "eligibility",
@@ -100,11 +102,19 @@ function classifyBootstrapError(error) {
     };
   }
 
+  if (message.includes("custom helper execution is disabled")) {
+    return {
+      code: "helper-override-disabled",
+      message,
+      nextAction: "Unset STRAVA_MCP_KEYCHAIN_HELPER, or explicitly set STRAVA_MCP_ALLOW_KEYCHAIN_HELPER_OVERRIDE=1 only for controlled diagnosis.",
+    };
+  }
+
   if (message.includes("timed out") && message.includes("Keychain")) {
     return {
       code: "keychain-approval-timeout",
       message,
-      nextAction: "Approve the macOS Keychain prompt, or choose Always Allow, then retry.",
+      nextAction: "Approve the macOS Keychain prompt, then retry. Use Allow for Claude Code-credentials; Always Allow is optional only for the bridge-owned helper.",
     };
   }
 
@@ -161,7 +171,7 @@ function classifyBootstrapError(error) {
     return {
       code: "keychain-access-denied",
       message,
-      nextAction: "macOS Keychain refused the access request; no credential was read. If a permission dialog appeared, re-run and click Allow or Always Allow. Otherwise make sure you are in a GUI session with the login Keychain unlocked.",
+      nextAction: "macOS Keychain refused the access request; no credential was read. Re-run in a GUI session with the login Keychain unlocked. Use Allow for Claude Code-credentials; Always Allow is optional only for the bridge-owned helper.",
     };
   }
 
@@ -206,14 +216,27 @@ function keychainDialogNotice({
     "That is Keychain access control working as intended:",
     `  - "security" wants to access "${claudeCodeKeychainService}":`,
     "    the one-time import you requested from Claude Code's credential.",
+    "    Choose \"Allow\" for this prompt. Do not choose \"Always Allow\" for /usr/bin/security.",
     `  - "strava-keychain-helper" wants to access "${bridgeKeychainService}":`,
     "    the bridge reading the credential it owns.",
-    "Click \"Always Allow\" so future runs stay silent; \"Allow\" grants one read and",
-    "the dialog returns next time. After an upgrade or rebuild, macOS treats the",
-    "rebuilt helper as a new program and asks once more; one dialog per upgrade is",
-    "expected. Details: README, \"Why Does macOS Ask For Keychain Permission?\".",
+    "    Choose \"Allow\" for least privilege. \"Always Allow\" avoids repeat prompts,",
+    "    but any process running as your macOS user can invoke this unsigned helper,",
+    "    so use that convenience only if you accept the same-user risk.",
+    "After an upgrade or rebuild, macOS may ask about the rebuilt helper again.",
+    "Details: README, \"Why Does macOS Ask For Keychain Permission?\".",
     "",
   ].join("\n");
+}
+
+async function refreshOrReimportCredential(manager, { claimImportedCredential = true } = {}) {
+  try {
+    await manager.getAccessToken({ forceRefresh: true });
+    return "refreshed";
+  } catch (error) {
+    if (!isRefreshTokenRejected(error)) throw error;
+    await manager.importFromClaudeCode({ claimImportedCredential });
+    return "reimported";
+  }
 }
 
 function buildCodexConfigToml({
@@ -260,6 +283,7 @@ module.exports = {
   classifyBootstrapError,
   credentialState,
   keychainDialogNotice,
+  refreshOrReimportCredential,
   toolsForBootstrap,
   toolsForProfile,
 };

@@ -2,7 +2,7 @@
 
 const assert = require("node:assert/strict");
 const test = require("node:test");
-const { parseMcpResponseBody } = require("../src/sse");
+const { parseMcpResponseBody, parseMcpResponseMessages } = require("../src/sse");
 
 test("parses plain JSON response", () => {
   const parsed = parseMcpResponseBody('{"jsonrpc":"2.0","id":1,"result":{"ok":true}}');
@@ -27,8 +27,24 @@ test("parses first SSE data event", () => {
   });
 });
 
-test("returns JSON-RPC error for unexpected non-JSON body", () => {
-  const parsed = parseMcpResponseBody("not json");
-  assert.equal(parsed.error.code, -32603);
-  assert.match(parsed.error.message, /Unexpected non-JSON/);
+test("rejects unexpected non-JSON body", () => {
+  assert.throws(() => parseMcpResponseBody("not json"), /Unexpected non-JSON/);
+});
+
+test("parses multiple SSE events and multiline data", () => {
+  const parsed = parseMcpResponseMessages([
+    ": keepalive",
+    "event: message",
+    'data: {"jsonrpc":"2.0",',
+    'data: "method":"notifications/progress"}',
+    "",
+    "data: [DONE]",
+    "",
+    'data: {"jsonrpc":"2.0","id":4,"result":{"ok":true}}',
+    "",
+  ].join("\n"));
+  assert.deepEqual(parsed, [
+    { jsonrpc: "2.0", method: "notifications/progress" },
+    { jsonrpc: "2.0", id: 4, result: { ok: true } },
+  ]);
 });

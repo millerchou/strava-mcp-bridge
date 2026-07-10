@@ -273,6 +273,10 @@ test("bridge credential manager refreshes expiring credential and writes rotated
   assert.equal(fetchCalls[0].url, TOKEN_ENDPOINT);
   assert.match(fetchCalls[0].options.body, /grant_type=refresh_token/);
   assert.match(fetchCalls[0].options.body, /client_id=client-123/);
+  assert.equal(
+    new URLSearchParams(fetchCalls[0].options.body).get("resource"),
+    ENDPOINT,
+  );
   assert.ok(fetchCalls[0].options.signal);
 
   const stored = JSON.parse(bridgeStore.writes.at(-1));

@@ -73,6 +73,16 @@ test("tools/list only exposes allowlisted tools", () => {
   ]);
 });
 
+test("tools/list fails closed when the upstream schema is malformed", () => {
+  const transformed = transformToolResponse({
+    request: { jsonrpc: "2.0", id: 2, method: "tools/list" },
+    response: { jsonrpc: "2.0", id: 2, result: { tools: "not-an-array" } },
+    policy: createPolicy({ allowTools: ["health"] }),
+  });
+  assert.equal(transformed.id, 2);
+  assert.equal(transformed.error.code, -32603);
+});
+
 test("get_activity_streams writes streams to file and returns only summary", () => {
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), "strava-mcp-bridge-test-"));
   const transformed = transformToolResponse({
@@ -90,6 +100,7 @@ test("get_activity_streams writes streams to file and returns only summary", () 
   const outputFile = path.join(dir, "123456.json");
   const saved = JSON.parse(fs.readFileSync(outputFile, "utf8"));
   const mode = fs.statSync(outputFile).mode & 0o777;
+  const directoryMode = fs.statSync(dir).mode & 0o777;
 
   assert.deepEqual(saved, {
     time: [0, 1],
@@ -105,6 +116,8 @@ test("get_activity_streams writes streams to file and returns only summary", () 
     time: 2,
   });
   assert.equal(mode, 0o600);
+  assert.equal(directoryMode, 0o700);
+  assert.deepEqual(fs.readdirSync(dir), ["123456.json"]);
   assert.equal(text.includes("[120,121]"), false);
 });
 
@@ -145,6 +158,59 @@ test("get_activity_streams rejects upstream location payload", () => {
   assert.equal(transformed.error.code, -32000);
   assert.match(transformed.error.message, /location/);
   assert.equal(fs.existsSync(path.join(dir, "123456.json")), false);
+});
+
+test("get_activity_streams rejects unrequested and nested stream values", () => {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), "strava-mcp-bridge-test-"));
+  const extra = transformToolResponse({
+    request: streamRequest(),
+    response: streamResponse({
+      time: [0],
+      heart_rate: [120],
+      distance: [0],
+      watts: [200],
+    }),
+    streamOutputDir: dir,
+  });
+  assert.match(extra.error.message, /unrequested stream/);
+
+  const nested = transformToolResponse({
+    request: streamRequest(),
+    response: streamResponse({
+      time: [0],
+      heart_rate: [{ value: 120 }],
+      distance: [0],
+    }),
+    streamOutputDir: dir,
+  });
+  assert.match(nested.error.message, /non-primitive/);
+  assert.equal(fs.existsSync(path.join(dir, "123456.json")), false);
+});
+
+test("get_activity_streams refuses symlink targets and output directories", () => {
+  const parent = fs.mkdtempSync(path.join(os.tmpdir(), "strava-mcp-bridge-test-"));
+  const dir = path.join(parent, "streams");
+  fs.mkdirSync(dir);
+  const victim = path.join(parent, "victim.json");
+  fs.writeFileSync(victim, "unchanged\n");
+  fs.symlinkSync(victim, path.join(dir, "123456.json"));
+
+  const targetResult = transformToolResponse({
+    request: streamRequest(),
+    response: streamResponse({ time: [0], heart_rate: [120], distance: [0] }),
+    streamOutputDir: dir,
+  });
+  assert.match(targetResult.error.message, /symlink/);
+  assert.equal(fs.readFileSync(victim, "utf8"), "unchanged\n");
+
+  const linkedDir = path.join(parent, "linked-streams");
+  fs.symlinkSync(dir, linkedDir);
+  const directoryResult = transformToolResponse({
+    request: streamRequest({ activity_id: "654321" }),
+    response: streamResponse({ time: [0], heart_rate: [120], distance: [0] }),
+    streamOutputDir: linkedDir,
+  });
+  assert.match(directoryResult.error.message, /real directory|symlink/);
 });
 
 test("non-stream tool responses redact location-like fields before context", () => {
@@ -253,4 +319,113 @@ test("non-stream tool responses redact segment coordinates without broad false p
   assert.equal(effort.template, "segment");
   assert.equal(effort.latency_ms, 25);
   assert.equal(effort.distance, 1000);
+});
+
+test("non-stream responses redact extended location keys and coordinate text", () => {
+  const transformed = transformToolResponse({
+    request: {
+      jsonrpc: "2.0",
+      id: 11,
+      method: "tools/call",
+      params: { name: "list_activities", arguments: {} },
+    },
+    response: streamResponse({
+      coordinates: [11.1, 22.2],
+      route_bounds: [1, 2, 3, 4],
+      bbox: [1, 2, 3, 4],
+      location_city: "Secret City",
+      note: "start latitude=11.1, longitude=22.2",
+      metrics: "12.345, 45.678",
+      route_points: [[11.1, 22.2], [11.2, 22.3]],
+      format: "json",
+      latency_ms: 20,
+    }),
+  });
+  const parsed = JSON.parse(transformed.result.content[0].text);
+  assert.equal(parsed.coordinates, "[redacted_by_strava_mcp_bridge]");
+  assert.equal(parsed.route_bounds, "[redacted_by_strava_mcp_bridge]");
+  assert.equal(parsed.bbox, "[redacted_by_strava_mcp_bridge]");
+  assert.equal(parsed.location_city, "[redacted_by_strava_mcp_bridge]");
+  assert.equal(parsed.note, "[redacted_by_strava_mcp_bridge]");
+  assert.equal(parsed.metrics, "[redacted_by_strava_mcp_bridge]");
+  assert.equal(parsed.route_points, "[redacted_by_strava_mcp_bridge]");
+  assert.equal(parsed.format, "json");
+  assert.equal(parsed.latency_ms, 20);
+});
+
+test("non-stream responses fail closed for opaque content blocks", () => {
+  const request = {
+    jsonrpc: "2.0",
+    id: 12,
+    method: "tools/call",
+    params: { name: "list_activities", arguments: {} },
+  };
+  const nonJson = transformToolResponse({
+    request,
+    response: {
+      jsonrpc: "2.0",
+      id: 12,
+      result: { content: [{ type: "text", text: "coordinates: 11.1,22.2" }] },
+    },
+  });
+  assert.equal(nonJson.error.code, -32000);
+  assert.match(nonJson.error.message, /non-JSON text/);
+
+  const resource = transformToolResponse({
+    request,
+    response: {
+      jsonrpc: "2.0",
+      id: 12,
+      result: { content: [{ type: "resource", resource: { uri: "geo:11.1,22.2" } }] },
+    },
+  });
+  assert.equal(resource.error.code, -32000);
+  assert.match(resource.error.message, /non-text content block/);
+});
+
+test("upstream errors are sanitized before entering client context", () => {
+  const transformed = transformToolResponse({
+    request: {
+      jsonrpc: "2.0",
+      id: 13,
+      method: "tools/call",
+      params: { name: "list_activities", arguments: {} },
+    },
+    response: {
+      jsonrpc: "2.0",
+      id: 13,
+      error: {
+        code: -32001,
+        message: "secret coordinates 11.1,22.2",
+        data: { accessToken: "must-not-leak" },
+      },
+    },
+  });
+  assert.equal(transformed.id, 13);
+  assert.equal(transformed.error.code, -32001);
+  assert.match(transformed.error.message, /details were suppressed/);
+  assert.equal(JSON.stringify(transformed).includes("must-not-leak"), false);
+  assert.equal(JSON.stringify(transformed).includes("11.1"), false);
+});
+
+test("structured token-like fields are redacted", () => {
+  const transformed = transformToolResponse({
+    request: {
+      jsonrpc: "2.0",
+      id: 14,
+      method: "tools/call",
+      params: { name: "health", arguments: {} },
+    },
+    response: streamResponse({
+      ok: true,
+      access_token: "secret-access",
+      refreshToken: "secret-refresh",
+      authorization: "Bearer secret",
+    }),
+  });
+  const parsed = JSON.parse(transformed.result.content[0].text);
+  assert.equal(parsed.ok, true);
+  assert.equal(parsed.access_token, "[redacted_by_strava_mcp_bridge]");
+  assert.equal(parsed.refreshToken, "[redacted_by_strava_mcp_bridge]");
+  assert.equal(parsed.authorization, "[redacted_by_strava_mcp_bridge]");
 });

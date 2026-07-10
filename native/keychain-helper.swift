@@ -1,7 +1,7 @@
 import Foundation
 import Security
 
-let allowedServicePrefix = "Strava MCP Bridge"
+let allowedServicePattern = #"^Strava MCP Bridge(?: [A-Za-z0-9._-]+)?-credentials$"#
 let itemLabel = "Strava MCP Bridge credentials"
 let itemComment = "OAuth credentials for strava-mcp-bridge. Created by the local Keychain helper."
 
@@ -42,17 +42,19 @@ func fail(_ message: String, status: OSStatus? = nil) -> Never {
 }
 
 func keychainQuery(service: String, account: String?) -> [String: Any] {
-    guard service.hasPrefix(allowedServicePrefix) else {
+    guard service.range(of: allowedServicePattern, options: .regularExpression) != nil else {
         fail("service is not allowed")
     }
 
-    var query: [String: Any] = [
+    guard let account, account == NSUserName() else {
+        fail("account must match the current macOS user")
+    }
+
+    let query: [String: Any] = [
         kSecClass as String: kSecClassGenericPassword,
         kSecAttrService as String: service,
+        kSecAttrAccount as String: account,
     ]
-    if let account, !account.isEmpty {
-        query[kSecAttrAccount as String] = account
-    }
     return query
 }
 
@@ -101,7 +103,7 @@ func writePassword(service: String, account: String?, value: String?) {
     addQuery[kSecValueData as String] = data
     addQuery[kSecAttrLabel as String] = itemLabel
     addQuery[kSecAttrComment as String] = itemComment
-    addQuery[kSecAttrAccessible as String] = kSecAttrAccessibleAfterFirstUnlockThisDeviceOnly
+    addQuery[kSecAttrAccessible as String] = kSecAttrAccessibleWhenUnlockedThisDeviceOnly
     let addStatus = SecItemAdd(addQuery as CFDictionary, nil)
     guard addStatus == errSecSuccess else {
         fail("SecItemAdd failed", status: addStatus)

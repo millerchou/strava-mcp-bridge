@@ -11,6 +11,11 @@ This project is an experimental compatibility bridge for MCP clients that can
 run local stdio servers, such as Codex, OpenCode, and similar coding agents.
 It forwards safe MCP requests to Strava's official remote MCP endpoint:
 
+The [official Strava MCP documentation](https://support.strava.com/en-us/articles/15401531-strava-mcp-connector)
+currently requires a Strava subscription and documents Claude clients. This
+bridge is an unsupported community integration; Strava can change its OAuth or
+MCP behavior at any time.
+
 ```text
 stdio MCP client
   -> strava-mcp-bridge
@@ -24,8 +29,10 @@ stdio MCP client
 claude mcp add --transport http strava https://mcp.strava.com/mcp
 # ...then run /mcp inside Claude Code and complete the Strava authorization.
 
-# Install the bridge (Apple Silicon macOS; requires Xcode Command Line Tools)
-npm install -g strava-mcp-bridge
+# Install from the current source release (Apple Silicon macOS)
+git clone https://github.com/millerchou/strava-mcp-bridge.git
+cd strava-mcp-bridge
+npm install -g .
 
 # Import the credential into the bridge's own Keychain item
 strava-mcp-bridge bootstrap
@@ -48,18 +55,26 @@ The current bootstrap assumption is:
    `strava-mcp-bridge auth import`.
 4. The bridge imports the Strava MCP OAuth credential into its own macOS
    Keychain item.
-5. After that import, this bridge reads and refreshes its own Keychain
-   credential and no longer depends on Claude Code.
+5. After that migration, this bridge reads and refreshes its own Keychain
+   credential without invoking or reading Claude Code during normal operation.
 
 You can use Claude Code with Anthropic's normal model backend, or launch Claude
 Code through Ollama or another Claude Code-compatible backend. The model backend
 is not the important part. The important part is that Claude Code completed the
-official Strava MCP OAuth flow.
+official Strava MCP OAuth flow. A paid Claude subscription is therefore not a
+bridge requirement, but a qualifying Strava subscription is still required by
+the official Strava MCP.
+
+"No longer depends on Claude Code" is operational, not cryptographic: the
+bridge still uses the OAuth `clientId` and rotating refresh-token chain issued
+during that first Claude Code authorization. If Strava revokes or changes that
+client identity, the user must authorize again through a currently supported
+client.
 
 ## How This Differs From Other Strava MCP Projects
 
-- **Developer-app-free bootstrap** — no Strava developer app, client ID, or
-  secret to get started.
+- **Developer-app-free bootstrap** — no user-created Strava developer app or
+  user-supplied client ID/secret to get started.
 - **Claude Code OAuth bootstrap** — the initial credential comes from an
   official Strava MCP OAuth flow completed in Claude Code, imported on an
   explicit user action.
@@ -76,8 +91,9 @@ official Strava MCP OAuth flow.
   bootstrap mode.
 - It does not call Strava data tools by default.
 - It does not print OAuth token values.
-- It does not store OAuth token values outside the bridge-owned macOS Keychain
-  item.
+- It does not persist OAuth token values outside the bridge-owned macOS Keychain
+  item. Tokens necessarily exist transiently in bridge/helper process memory and
+  the helper's local stdin/stdout pipes.
 - It does not modify Claude Code config or Keychain credentials.
 - It does not write refreshed tokens back into Claude Code's Keychain item.
 - The MCP server startup path does not import from Claude Code. Import is a
@@ -89,12 +105,16 @@ Allowed by default:
 
 - `initialize`
 - `notifications/initialized`
+- `notifications/cancelled`
+- `notifications/progress`
+- `ping`
 - `tools/list`
+- JSON-RPC responses to upstream server requests
 
 Blocked by default:
 
 - `tools/call`
-- every other JSON-RPC method
+- every other JSON-RPC request method
 
 `tools/list` is also filtered. The MCP client only sees tools that are present
 in the local `--allow-tool` list, even if the upstream Strava MCP server exposes
@@ -120,9 +140,11 @@ Location/GPS/polyline-like stream names are blocked.
 For other JSON tool responses, the bridge redacts common location-like fields
 before returning content to the MCP client context, including `location`,
 `latlng`, `start_latlng`, `end_latlng`, `lat`, `lng`, `latitude`, `longitude`,
-`polyline`, `summary_polyline`, and `map`. This is a defensive filter around an
-upstream service whose response schemas can change; keep new tools disabled
-until you have reviewed their output and privacy implications.
+`coordinates`, `bounds`, `bbox`, `polyline`, `summary_polyline`, and `map`.
+Non-JSON text content and non-text content blocks fail closed instead of being
+passed through. This is a defensive filter around an upstream service whose
+response schemas can change; keep new tools disabled until you have reviewed
+their output and privacy implications.
 
 Full `get_activity_streams` arrays can be very large, so the bridge writes them
 to disk and returns only a small summary containing `streams_file`, stream names,
@@ -144,6 +166,16 @@ Stream files go to:
 Use `--data-dir` to move all bridge-managed local data, or
 `--stream-output-dir` to override only the stream file sink.
 
+The final stream directory must be a real directory owned by the current user;
+it is set to mode `0700`. Files are written atomically with mode `0600`, and
+symlink targets are rejected. Retention cleanup is explicit and dry-run by
+default:
+
+```bash
+strava-mcp-bridge streams prune --older-than-days 30
+strava-mcp-bridge streams prune --older-than-days 30 --yes
+```
+
 The equivalent environment variables are `STRAVA_MCP_DATA_DIR` and
 `STRAVA_MCP_STREAM_OUTPUT_DIR`.
 
@@ -151,11 +183,17 @@ Security-sensitive environment variables are treated the same as command-line
 flags. Review MCP client `env` blocks before trusting a config. In particular,
 `STRAVA_MCP_TOKEN_ENDPOINT` together with
 `STRAVA_MCP_ALLOW_TOKEN_ENDPOINT_OVERRIDE=1` can redirect OAuth refresh requests
-and must be used only for controlled local diagnosis.
+and must be used only for controlled local diagnosis. Likewise, a non-official
+`STRAVA_MCP_URL` is rejected unless
+`STRAVA_MCP_ALLOW_ENDPOINT_OVERRIDE=1` is also set (the CLI equivalent is
+`--allow-endpoint-override`). A custom
+`STRAVA_MCP_KEYCHAIN_HELPER` is rejected unless
+`STRAVA_MCP_ALLOW_KEYCHAIN_HELPER_OVERRIDE=1` is also set.
 
 Other supported environment variables, grouped by purpose:
 
-- Upstream and protocol: `STRAVA_MCP_URL`, `MCP_PROTOCOL_VERSION`
+- Upstream and protocol: `STRAVA_MCP_URL`,
+  `STRAVA_MCP_ALLOW_ENDPOINT_OVERRIDE`, `MCP_PROTOCOL_VERSION`
 - Auth and credential handling: `STRAVA_MCP_AUTH`,
   `STRAVA_MCP_BRIDGE_KEYCHAIN_SERVICE`, `STRAVA_MCP_CLAIM_ON_IMPORT`,
   `STRAVA_MCP_NO_CLAIM_ON_IMPORT`, `STRAVA_MCP_REFRESH_SKEW_SECONDS`,
@@ -163,27 +201,37 @@ Other supported environment variables, grouped by purpose:
 - Timeouts: `STRAVA_MCP_OAUTH_TIMEOUT_MS`, `STRAVA_MCP_UPSTREAM_TIMEOUT_MS`,
   `STRAVA_MCP_KEYCHAIN_TIMEOUT_MS`
 - Tool allowlist and Keychain plumbing: `STRAVA_MCP_ALLOWED_TOOLS`,
-  `STRAVA_MCP_KEYCHAIN_BACKEND`, `STRAVA_MCP_KEYCHAIN_HELPER`
+  `STRAVA_MCP_KEYCHAIN_BACKEND`, `STRAVA_MCP_KEYCHAIN_HELPER`,
+  `STRAVA_MCP_ALLOW_KEYCHAIN_HELPER_OVERRIDE`
 
 ## Requirements
 
-- Node.js 20.11+
+- Node.js 22+
 - Apple Silicon macOS (`darwin arm64`)
 - Swift compiler / Xcode Command Line Tools, used to build the native Keychain
   helper. Install them first with `xcode-select --install`; `npm install -g`
   compiles the helper and fails with instructions when they are missing.
 - A prior Claude Code Strava MCP authorization for the first import (see
   [Usage](#usage) for the one-time `claude mcp add` prerequisite)
+- A Strava subscription eligible for the official Strava MCP
 
 ## Usage
 
-Install or set up the native Keychain helper:
+Install the current source checkout and build its native Keychain helper:
+
+```bash
+git clone https://github.com/millerchou/strava-mcp-bridge.git
+cd strava-mcp-bridge
+npm install -g .
+```
+
+After the package's first npm release, registry installation will be:
 
 ```bash
 npm install -g strava-mcp-bridge
 ```
 
-When running from a source checkout:
+To run directly from an existing source checkout without installing globally:
 
 ```bash
 npm run setup
@@ -207,7 +255,9 @@ claude mcp add --transport http strava https://mcp.strava.com/mcp
 
 Then, inside Claude Code, run `/mcp`, select `strava`, and complete the OAuth
 authorization in the browser. This is a one-time prerequisite; after the import
-below, the bridge no longer depends on Claude Code.
+below, normal bridge operation does not invoke or read Claude Code. Claude Code
+does not need a paid Claude backend for this step if it is launched with Ollama
+or another compatible backend.
 
 Once Claude Code has authorized Strava MCP, bootstrap the bridge-owned
 credential:
@@ -217,16 +267,19 @@ strava-mcp-bridge bootstrap
 ```
 
 `bootstrap` builds the native helper if it is missing, imports the Claude Code
-Strava MCP OAuth credential only if the bridge-owned Keychain item is missing
-or incomplete, refreshes it only when a refresh is due, and always prints a
-Codex MCP config snippet. Token values are never printed.
+Strava MCP OAuth credential if the bridge-owned Keychain item is missing or
+incomplete, refreshes it when due, and always prints a Codex MCP config snippet.
+If the bridge refresh token is rejected after the user has re-authorized in
+Claude Code, an explicit `bootstrap` retries one fresh import. Token values are
+never printed.
 
 If Claude Code has no Strava MCP credential yet, or if the copied refresh token
 is stale, the command exits with a specific next action. Typical fixes are:
 
 - Add and authorize Strava MCP in Claude Code first (see the `claude mcp add`
   command above), then rerun `strava-mcp-bridge bootstrap`.
-- If macOS shows a Keychain permission dialog, click "Always Allow" (see
+- If macOS shows a Keychain permission dialog, follow the item-specific advice
+  below rather than granting `/usr/bin/security` permanent access (see
   ["Why Does macOS Ask For Keychain Permission?"](#why-does-macos-ask-for-keychain-permission)),
   then rerun the command if it timed out while waiting.
 - If the native helper is missing, run `strava-mcp-bridge setup`.
@@ -238,7 +291,8 @@ item:
 strava-mcp-bridge auth import
 ```
 
-`auth import` refreshes once by default. That claims the refresh-token chain for
+`auth import` refreshes once by default. This is a credential migration, not a
+passive copy: it claims the refresh-token chain for
 the bridge-owned credential, which is what makes later operation independent
 from Claude Code. Because Strava refresh tokens rotate, Claude Code's copied
 Strava MCP refresh token may become stale after this. Claude Code can
@@ -290,8 +344,9 @@ credentials during MCP server startup.
 
 Keychain reads and writes use a small Swift helper built on macOS
 `Security.framework`. Secrets are passed to the helper over stdin/stdout, not as
-command-line arguments. The helper only accepts Keychain services with the
-`Strava MCP Bridge` prefix.
+command-line arguments. The helper accepts only service names shaped like
+`Strava MCP Bridge <name>-credentials` (including the default
+`Strava MCP Bridge Native-credentials`).
 
 If multiple MCP clients run bridge processes at the same time, one process may
 rotate the Strava refresh token while another still has an older in-memory copy.
@@ -307,7 +362,10 @@ command-line arguments.
 On server runs it reads only that bridge-owned item. It refreshes tokens through
 Strava MCP's OAuth token endpoint when the access token has one hour or less
 left before expiry, and also retries once after an upstream HTTP 401 by forcing
-a refresh.
+a refresh. Refresh requests bind the grant to
+`resource=https://mcp.strava.com/mcp`. If an upstream MCP session expires, the
+bridge repeats the saved `initialize` handshake before retrying the request; it
+also sends an MCP session `DELETE` when stdio closes.
 
 Keychain helper calls time out after 120 seconds by default. OAuth refresh and
 upstream MCP requests time out after 30 seconds by default.
@@ -388,9 +446,13 @@ items are involved:
 
 What to click:
 
-- **Always Allow** — macOS remembers the grant and future bridge sessions run
-  without dialogs.
-- **Allow** — grants a single read; the dialog returns on every access.
+- For `security` reading `Claude Code-credentials`, choose **Allow**. Do not
+  choose **Always Allow** for the general-purpose `/usr/bin/security` program.
+- For `strava-keychain-helper` reading the bridge-owned item, **Allow** is the
+  least-privilege choice and may prompt again. **Always Allow** avoids repeat
+  prompts, but any process already running as your macOS user can invoke the
+  unsigned helper to read, replace, or delete the bridge credential, so use it
+  only if you accept that same-user risk.
 - **Deny** — the current command fails safely; nothing is read and nothing is
   lost.
 
@@ -462,10 +524,16 @@ Run tests:
 
 ```bash
 npm test
+npm pack --dry-run
 ```
 
 The test suite uses only local mocks. It does not contact Strava and does not
 read Keychain.
+
+The npm publish workflow uses GitHub OIDC trusted publishing and contains no
+long-lived npm token. Before the first automated release, the package owner must
+claim `strava-mcp-bridge` on npm and configure `publish.yml` as its trusted
+GitHub publisher. Release tags must exactly match `v<package.json version>`.
 
 ## Security
 
@@ -473,7 +541,7 @@ See [SECURITY.md](SECURITY.md) and [THREAT_MODEL.md](THREAT_MODEL.md).
 
 ## Research Status
 
-Validated locally on 2026-07-08:
+Validated locally through 2026-07-10:
 
 - Claude Code launched through Ollama can authenticate official Strava MCP.
 - A non-Claude local client can complete `initialize` and `tools/list` with the
@@ -487,9 +555,20 @@ Validated locally on 2026-07-08:
   Claude Code.
 - Keychain operations use a Swift `Security.framework` helper by default,
   avoiding token-bearing command-line arguments.
+- Strava advertises OAuth protected-resource and authorization-server metadata,
+  including a dynamic client registration endpoint. However, isolated Codex
+  `0.142.5` reported no authorization support for this server, and three
+  standards-shaped RFC 7591 registration requests were all rejected with
+  `400 invalid_client_metadata`. No client ID or token was issued.
+- Therefore no verified standards-only first-time path currently removes the
+  Claude Code bootstrap. The effective gate is OAuth client registration/token
+  issuance, not the LLM model or a simple Claude-shaped User-Agent header.
+- Strava's public documentation currently describes the connector for Claude
+  clients and [says support for other clients is planned](https://support.strava.com/en-us/articles/15401526-strava-api-and-mcp-faq).
+  This bridge remains unofficial and outside that documented support surface.
 
-The remaining deferred research question is truly independent first-time
-bootstrap:
+The remaining open question is whether Strava will publish a usable client
+registration policy or officially support additional MCP clients:
 
 ```text
 How can a non-Claude-Code client obtain its first valid official Strava MCP
