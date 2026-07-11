@@ -20,6 +20,11 @@ project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 - Made npm release publishing idempotent and documented the one-time package
   claim and trusted-publisher setup.
 - Added a redaction-first bug report form for early adopter diagnostics.
+- Made the bundled Codex skill discoverable from `.agents/skills` and added an
+  explicit, overwrite-safe `skill install` CLI command for user or project
+  scope.
+- Added npm ownership metadata and `server.json` for publication to the official
+  MCP Registry after the first npm release.
 - Pin official MCP/OAuth endpoints by default and bind refresh grants to the MCP
   resource.
 - Fail closed for opaque tool-response content and sanitize upstream errors.

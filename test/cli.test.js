@@ -1,6 +1,8 @@
 "use strict";
 
 const assert = require("node:assert/strict");
+const fs = require("node:fs");
+const os = require("node:os");
 const path = require("node:path");
 const { spawnSync } = require("node:child_process");
 const test = require("node:test");
@@ -30,6 +32,42 @@ test("CLI config codex prints a usable MCP snippet", () => {
   assert.match(result.stdout, /get_activity_streams/);
   assert.match(result.stdout, /\/tmp\/strava-streams/);
   assert.equal(result.stderr, "");
+});
+
+test("CLI installs the bundled Codex skill with explicit overwrite protection", (t) => {
+  const projectDir = fs.mkdtempSync(path.join(os.tmpdir(), "strava-skill-cli-"));
+  t.after(() => fs.rmSync(projectDir, { recursive: true, force: true }));
+
+  const installed = spawnCli([
+    "skill", "install", "--project-dir", projectDir, "--json",
+  ]);
+  assert.equal(installed.status, 0);
+  const payload = JSON.parse(installed.stdout);
+  assert.equal(payload.changed, true);
+  assert.equal(payload.scope, "project");
+  assert.match(payload.nextAction, /\$strava-mcp-bridge/);
+
+  const skillFile = path.join(payload.targetDir, "SKILL.md");
+  assert.match(fs.readFileSync(skillFile, "utf8"), /^---\nname: strava-mcp-bridge/);
+
+  const repeated = spawnCli([
+    "skill", "install", "--project-dir", projectDir, "--json",
+  ]);
+  assert.equal(repeated.status, 0);
+  assert.equal(JSON.parse(repeated.stdout).changed, false);
+
+  fs.writeFileSync(skillFile, "locally modified\n");
+  const blocked = spawnCli(["skill", "install", "--project-dir", projectDir]);
+  assert.equal(blocked.status, 1);
+  assert.match(blocked.stderr, /--force/);
+  assert.equal(fs.readFileSync(skillFile, "utf8"), "locally modified\n");
+
+  const forced = spawnCli([
+    "skill", "install", "--project-dir", projectDir, "--force", "--json",
+  ]);
+  assert.equal(forced.status, 0);
+  assert.equal(JSON.parse(forced.stdout).changed, true);
+  assert.match(fs.readFileSync(skillFile, "utf8"), /^---\nname: strava-mcp-bridge/);
 });
 
 test("auth remove without --yes is a dry run that touches nothing", () => {
@@ -157,8 +195,6 @@ test("bootstrap classifies a disabled custom helper override", () => {
 });
 
 test("streams prune is dry-run by default and removes only with --yes", () => {
-  const fs = require("node:fs");
-  const os = require("node:os");
   const directory = fs.mkdtempSync(path.join(os.tmpdir(), "strava-prune-cli-"));
   const oldFile = path.join(directory, "123.json");
   const ignoredFile = path.join(directory, "notes.json");

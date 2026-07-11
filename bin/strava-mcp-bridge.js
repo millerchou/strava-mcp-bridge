@@ -25,6 +25,7 @@ const {
 const { StravaMcpHttpClient } = require("../src/upstream");
 const { createPolicy } = require("../src/policy");
 const { defaultDataDir, expandPath, resolveDataPaths } = require("../src/paths");
+const { CODEX_SKILL_NAME, installCodexSkill } = require("../src/skill");
 const { pruneStreamFiles } = require("../src/stream_store");
 const {
   buildCodexConfigToml,
@@ -50,6 +51,7 @@ Usage:
   strava-mcp-bridge auth status [options]
   strava-mcp-bridge auth remove [options]
   strava-mcp-bridge config codex [options]
+  strava-mcp-bridge skill install [options]
   strava-mcp-bridge streams prune [options]
 
 Options:
@@ -227,6 +229,25 @@ Options:
   --bridge-keychain-service <s> Bridge-owned Keychain service name.
   --keychain-timeout-ms <n>     Native Keychain helper timeout in milliseconds.
   --oauth-timeout-ms <n>        OAuth refresh timeout in milliseconds.
+`);
+}
+
+function printSkillHelp() {
+  process.stdout.write(`strava-mcp-bridge skill install
+
+Usage:
+  strava-mcp-bridge skill install [options]
+
+Installs the bundled Codex skill so Codex can discover the setup and safety
+workflow. No Codex config or MCP config is modified.
+
+Options:
+  --project-dir <path>          Install to <path>/.agents/skills instead of the
+                                default user scope at $HOME/.agents/skills.
+  --force                       Replace an existing different skill only after
+                                you have reviewed that target directory.
+  --json                        Print machine-readable JSON.
+  --help                        Show this help.
 `);
 }
 
@@ -454,6 +475,10 @@ async function main() {
     runConfigCommand(argv.slice(1));
     return;
   }
+  if (argv[0] === "skill") {
+    runSkillCommand(argv.slice(1));
+    return;
+  }
   if (argv[0] === "streams") {
     runStreamsCommand(argv.slice(1));
     return;
@@ -668,6 +693,47 @@ function runConfigCommand(argv) {
   }
 
   process.stdout.write(toml);
+}
+
+function runSkillCommand(argv) {
+  const command = argv[0];
+  if (!command || command === "--help" || command === "-h") {
+    printSkillHelp();
+    return;
+  }
+  if (command !== "install") {
+    throw new Error(`Unknown skill command: ${command}`);
+  }
+
+  const config = parseSkillInstallArgs(argv.slice(1));
+  if (config.help) {
+    printSkillHelp();
+    return;
+  }
+
+  const result = installCodexSkill({
+    projectDir: config.projectDir || undefined,
+    force: config.force,
+  });
+
+  const payload = {
+    command: "install",
+    skill: CODEX_SKILL_NAME,
+    changed: result.changed,
+    scope: result.scope,
+    targetDir: result.targetDir,
+    nextAction: `Start a new Codex task, then invoke $${CODEX_SKILL_NAME}.`,
+  };
+
+  if (config.jsonOutput) {
+    process.stdout.write(`${JSON.stringify(payload, null, 2)}\n`);
+    return;
+  }
+
+  process.stdout.write(result.changed
+    ? `Installed Codex skill (${result.scope}): ${result.targetDir}\n`
+    : `Codex skill is already up to date (${result.scope}): ${result.targetDir}\n`);
+  process.stdout.write(`${payload.nextAction}\n`);
 }
 
 async function runAuthCommand(argv) {
@@ -888,6 +954,38 @@ function parseConfigCodexArgs(argv) {
   config.allowTools = config.allowTools
     ? Array.from(new Set(config.allowTools))
     : toolsForProfile(config.profile);
+  return config;
+}
+
+function parseSkillInstallArgs(argv) {
+  const config = {
+    projectDir: "",
+    force: false,
+    jsonOutput: false,
+    help: false,
+  };
+
+  for (let i = 0; i < argv.length; i += 1) {
+    const arg = argv[i];
+    if (arg === "--help" || arg === "-h") {
+      config.help = true;
+      continue;
+    }
+    if (arg === "--project-dir") {
+      config.projectDir = expandPath(requireValue(argv, ++i, arg));
+      continue;
+    }
+    if (arg === "--force") {
+      config.force = true;
+      continue;
+    }
+    if (arg === "--json") {
+      config.jsonOutput = true;
+      continue;
+    }
+    throw new Error(`Unknown skill install option: ${arg}`);
+  }
+
   return config;
 }
 

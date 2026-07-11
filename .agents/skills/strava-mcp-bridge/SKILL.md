@@ -1,3 +1,8 @@
+---
+name: strava-mcp-bridge
+description: Set up, configure, troubleshoot, and safely operate strava-mcp-bridge when Codex or another local stdio MCP client needs Strava's official MCP. Use for doctor/bootstrap, project-scoped Codex config, credential refresh failures, activity stream allowlists, and location-data privacy boundaries.
+---
+
 # Strava MCP Bridge
 
 Use this skill when the user wants to use the official Strava MCP server from an

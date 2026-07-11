@@ -117,6 +117,23 @@ After the first npm release, installation becomes:
 npm install -g strava-mcp-bridge
 ```
 
+Install the bundled Codex skill explicitly at user scope:
+
+```bash
+strava-mcp-bridge skill install
+```
+
+This writes only to `$HOME/.agents/skills/strava-mcp-bridge`; it does not edit
+Codex or MCP configuration. To keep the skill inside one project instead:
+
+```bash
+strava-mcp-bridge skill install --project-dir /absolute/path/to/project
+```
+
+Start a new Codex task after installation, then invoke
+`$strava-mcp-bridge`. Existing different skill content is never overwritten
+unless you review the target and pass `--force` explicitly.
+
 ### 1. Authorize The Official Strava MCP Once
 
 Add the official endpoint to Claude Code:
@@ -161,8 +178,10 @@ The generated profile exposes:
 - `get_activity_streams`
 - `get_activity_performance`
 
-The bundled [Codex skill](skills/strava-mcp-bridge/SKILL.md) can guide an agent
-through `doctor`, `bootstrap`, and project-level configuration.
+The bundled [Codex skill](.agents/skills/strava-mcp-bridge/SKILL.md) guides the
+agent through `doctor`, `bootstrap`, project-level configuration, and safe
+failure handling. A source checkout exposes it as a repository skill; the
+`skill install` command makes it discoverable from other projects.
 
 ## How It Works
 
@@ -259,6 +278,8 @@ A rebuilt helper may trigger a new prompt after an upgrade.
 | `strava-mcp-bridge doctor` | Read-only platform/helper/credential check |
 | `strava-mcp-bridge bootstrap` | Set up helper, credential, and config snippet |
 | `strava-mcp-bridge auth status --json` | Show non-sensitive credential metadata |
+| `strava-mcp-bridge skill install` | Install the bundled Codex skill at user scope |
+| `strava-mcp-bridge skill install --project-dir <path>` | Install it in one project |
 | `strava-mcp-bridge config codex --profile minimal` | Print minimal Codex config |
 | `strava-mcp-bridge config codex --profile training-sync` | Print cycling-sync config |
 | `strava-mcp-bridge streams prune --older-than-days 30` | Preview stream retention cleanup |
@@ -285,6 +306,8 @@ deauthorize the connection in Strava's connected-app settings.
 - Official Strava MCP, not a REST API reimplementation
 - First OAuth bootstrap still requires Claude Code
 - No verified standards-only dynamic client registration path exists today
+- Official MCP Registry metadata is prepared; publication waits for the first
+  npm release
 - Strava [says support for other clients is planned](https://support.strava.com/en-us/articles/15401526-strava-api-and-mcp-faq)
 
 The restriction appears at OAuth client registration/token issuance, not at the

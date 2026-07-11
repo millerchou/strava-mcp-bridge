@@ -1,0 +1,23 @@
+{
+  "$schema": "https://static.modelcontextprotocol.io/schemas/2025-12-11/server.schema.json",
+  "name": "io.github.millerchou/strava-mcp-bridge",
+  "title": "Strava MCP Bridge",
+  "description": "Use Strava's official MCP from Codex and other local stdio clients without a developer app.",
+  "repository": {
+    "url": "https://github.com/millerchou/strava-mcp-bridge",
+    "source": "github",
+    "id": "1294596143"
+  },
+  "websiteUrl": "https://github.com/millerchou/strava-mcp-bridge#readme",
+  "version": "0.1.0",
+  "packages": [
+    {
+      "registryType": "npm",
+      "identifier": "strava-mcp-bridge",
+      "version": "0.1.0",
+      "transport": {
+        "type": "stdio"
+      }
+    }
+  ]
+}

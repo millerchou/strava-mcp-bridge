@@ -101,3 +101,28 @@ retroactively add provenance to the manually published package.
 
 The release workflow is intentionally idempotent: if the exact package version
 already exists, it does not attempt to overwrite it.
+
+## Publish To The Official MCP Registry
+
+The repository includes `server.json`, and `package.json.mcpName` matches its
+server identity. The MCP Registry verifies this field from the public npm
+artifact, so registry publication must happen after the npm package exists.
+
+1. Confirm the npm package and `server.json` versions match.
+2. Install the official `mcp-publisher` CLI using the current registry docs.
+3. Authenticate interactively:
+
+   ```bash
+   mcp-publisher login github
+   ```
+
+4. Publish from the repository root:
+
+   ```bash
+   mcp-publisher publish
+   ```
+
+5. Verify the registry record before submitting the project to downstream MCP
+   directories.
+
+Reference: [official MCP Registry quickstart](https://modelcontextprotocol.io/registry/quickstart).

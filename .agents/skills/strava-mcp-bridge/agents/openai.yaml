@@ -1,0 +1,7 @@
+interface:
+  display_name: "Strava MCP Bridge"
+  short_description: "Set up Strava's official MCP safely in Codex"
+  default_prompt: "Use $strava-mcp-bridge to set up or troubleshoot the Strava MCP bridge in this project without exposing OAuth or location data."
+
+policy:
+  allow_implicit_invocation: true
