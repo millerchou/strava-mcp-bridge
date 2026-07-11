@@ -6,8 +6,44 @@ project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+## [0.1.1] - 2026-07-12
+
+### Fixed
+
+- Published an npm artifact whose README reflects the live npm and official MCP
+  Registry installation paths instead of the pre-publication fallback.
+- Removed the hard-coded Registry version from README status text so future npm
+  artifacts do not become stale after a version bump.
+
+### Changed
+
+- Switched normal npm releases to the configured GitHub Actions OIDC trusted
+  publisher; `0.1.1` is the first version delivered through that path.
+
+## [0.1.0] - 2026-07-12
+
 ### Added
 
+- Initial experimental stdio bridge for Strava's official remote MCP server.
+- Bridge-owned macOS Keychain credential storage.
+- Explicit `auth import`, `auth status`, and `auth remove` commands.
+- `bootstrap`, `doctor`, and `config codex` commands for first-time AI coding
+  tool setup and non-sensitive diagnostics.
+- A bundled AI coding tool skill for Strava MCP Bridge setup and safety rules.
+- Default-deny tool policy and filtered `tools/list`.
+- Location-field redaction for non-stream JSON tool responses.
+- File sink for `get_activity_streams` to keep full streams out of MCP client
+  context.
+- Default macOS Application Support data directory and `--data-dir` override.
+- Location/GPS/polyline stream blocking.
+- Keychain retry behavior for concurrent refresh-token rotation.
+- Safe malformed-credential JSON errors that do not echo raw secret text.
+- Keychain permission dialog guidance: a pre-dialog notice during `bootstrap`
+  and a README FAQ explaining which button to click and when dialogs reappear.
+- Classified, actionable errors across `bootstrap`, `doctor`, and `auth`
+  commands (network, denied Keychain dialog, missing Xcode Command Line Tools,
+  invalid profile, and Claude Code prerequisite cases); stdio JSON-RPC errors
+  carry the same diagnostics in `error.data`.
 - Complete multi-event SSE parsing, MCP session reinitialization, session
   deletion on shutdown, and protocol-safe ping/cancellation/response handling.
 - Atomic, symlink-safe stream storage plus dry-run retention pruning.
@@ -33,28 +69,3 @@ project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   a rejected bridge refresh chain.
 - Clarify Strava subscription, Claude subscription, OAuth identity, and
   item-specific Keychain permission behavior.
-
-## [0.1.0] - 2026-07-08
-
-### Added
-
-- Initial experimental stdio bridge for Strava's official remote MCP server.
-- Bridge-owned macOS Keychain credential storage.
-- Explicit `auth import`, `auth status`, and `auth remove` commands.
-- `bootstrap`, `doctor`, and `config codex` commands for first-time AI coding
-  tool setup and non-sensitive diagnostics.
-- A bundled AI coding tool skill for Strava MCP Bridge setup and safety rules.
-- Default-deny tool policy and filtered `tools/list`.
-- Location-field redaction for non-stream JSON tool responses.
-- File sink for `get_activity_streams` to keep full streams out of MCP client
-  context.
-- Default macOS Application Support data directory and `--data-dir` override.
-- Location/GPS/polyline stream blocking.
-- Keychain retry behavior for concurrent refresh-token rotation.
-- Safe malformed-credential JSON errors that do not echo raw secret text.
-- Keychain permission dialog guidance: a pre-dialog notice during `bootstrap`
-  and a README FAQ explaining which button to click and when dialogs reappear.
-- Classified, actionable errors across `bootstrap`, `doctor`, and `auth`
-  commands (network, denied Keychain dialog, missing Xcode Command Line Tools,
-  invalid profile, and Claude Code prerequisite cases); stdio JSON-RPC errors
-  carry the same diagnostics in `error.data`.

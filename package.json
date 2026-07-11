@@ -1,6 +1,6 @@
 {
   "name": "strava-mcp-bridge",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "mcpName": "io.github.millerchou/strava-mcp-bridge",
   "description": "Local privacy bridge for using Strava's official MCP from Codex without creating a Strava developer app.",
   "type": "commonjs",
