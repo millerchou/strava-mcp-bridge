@@ -4,11 +4,11 @@ This document separates the one-time npm package claim from later automated
 releases. Do not publish a GitHub Release until the matching npm prerequisites
 below are complete.
 
-## One-Time First npm Publication
+## One-Time First npm Publication (Completed For `0.1.0`)
 
-The package name is currently unclaimed in the public registry. The first
-publication needs an interactive npm account with permission to publish the
-unscoped package.
+`strava-mcp-bridge@0.1.0` was published manually to claim the unscoped package.
+Do not repeat this section for later releases; use the trusted GitHub workflow
+described below.
 
 1. Confirm the release commit is on `main` and CI is green.
 2. Confirm `package.json` is still version `0.1.0`.

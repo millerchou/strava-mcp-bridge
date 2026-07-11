@@ -102,17 +102,6 @@ component is the Claude Code OAuth client, not the model backend.
 
 ## Install
 
-The npm package has not completed its first registry publication yet. Until it
-does, install the current source release:
-
-```bash
-git clone https://github.com/millerchou/strava-mcp-bridge.git
-cd strava-mcp-bridge
-npm install -g .
-```
-
-After the first npm release, installation becomes:
-
 ```bash
 npm install -g strava-mcp-bridge
 ```
