@@ -98,6 +98,8 @@ retroactively add provenance to the manually published package.
 4. Publish the release.
 5. Verify the npm package, provenance, GitHub Actions run, and installation on a
    clean Apple Silicon Mac.
+6. Publish the matching `server.json` version to the official MCP Registry and
+   verify that it becomes the latest active version.
 
 The release workflow is intentionally idempotent: if the exact package version
 already exists, it does not attempt to overwrite it.
@@ -108,8 +110,10 @@ The repository includes `server.json`, and `package.json.mcpName` matches its
 server identity. The MCP Registry verifies this field from the public npm
 artifact, so registry publication must happen after the npm package exists.
 
-`io.github.millerchou/strava-mcp-bridge@0.1.0` was published to the official
-Registry after the first npm release.
+`io.github.millerchou/strava-mcp-bridge@0.1.0` and `@0.1.1` are published to the
+official Registry; `0.1.1` is the latest active version at the time of writing.
+Publishing to npm or creating a GitHub Release does not update the MCP Registry
+automatically. Repeat this section for every package version.
 
 1. Confirm the npm package and `server.json` versions match.
 2. Install the official `mcp-publisher` CLI using the current registry docs.
