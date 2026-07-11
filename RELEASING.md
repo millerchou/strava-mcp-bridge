@@ -1,8 +1,8 @@
 # Releasing strava-mcp-bridge
 
-This document separates the one-time npm package claim from later automated
-releases. Do not publish a GitHub Release until the matching npm prerequisites
-below are complete.
+This document records the completed one-time npm package claim and trusted
+publisher setup, then defines the process for later automated releases. Do not
+publish a future GitHub Release until its matching npm prerequisites are met.
 
 ## One-Time First npm Publication (Completed For `0.1.0`)
 
@@ -43,9 +43,10 @@ described below.
 Do not paste npm passwords, OTPs, recovery codes, or tokens into an issue,
 commit, AI conversation, or shell history beyond npm's own interactive prompt.
 
-## Configure npm Trusted Publishing
+## Configure npm Trusted Publishing (Completed)
 
-After the package exists on npm:
+The trusted publisher is configured for this repository. The completed one-time
+setup was:
 
 1. Open the package settings on npmjs.com.
 2. Add a GitHub Actions trusted publisher.
@@ -70,25 +71,23 @@ produces provenance for a public package from a public repository.
 
 Reference: [npm trusted publishing documentation](https://docs.npmjs.com/trusted-publishers/).
 
-The manually published first `0.1.0` package will not have CI-generated
-provenance. That attestation is available only for versions published through
-the configured trusted GitHub workflow. Do not imply otherwise on the `0.1.0`
-release page; later versions published by `publish.yml` will receive it
-automatically.
+The manually published first `0.1.0` package has no CI-generated provenance.
+Do not imply otherwise on the `0.1.0` release page. `0.1.1` was the first
+version published by `publish.yml`; its npm artifact has OIDC provenance and a
+registry signature.
 
-## Publish The Prepared GitHub Release
+## First GitHub Release (Completed For `v0.1.0`)
 
-A draft `v0.1.0` GitHub Release may already exist. Before publishing it:
+`v0.1.0` was published from commit `131c6d9`. Its completed checklist was:
 
 - the `0.1.0` npm package must exist;
 - `publish.yml` must be registered as the trusted publisher;
 - the release target must be the intended `main` commit;
 - the release tag must equal `v<package.json version>`.
 
-Publishing the draft triggers `publish.yml`. The workflow first checks whether
-the exact version already exists. For the manually published first version it
-will skip a duplicate npm publish and finish successfully. This skip does not
-retroactively add provenance to the manually published package.
+Publishing the release triggered `publish.yml`. The workflow found the manually
+published package, skipped a duplicate npm publish, and finished successfully.
+This did not retroactively add provenance to `0.1.0`.
 
 ## Later Releases
 
