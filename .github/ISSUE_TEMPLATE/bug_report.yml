@@ -1,0 +1,69 @@
+name: Bug report
+description: Report a reproducible bridge, bootstrap, or MCP integration problem.
+title: "[Bug]: "
+labels:
+  - bug
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Do not paste OAuth tokens, Keychain contents, full activity responses,
+        GPS data, or personal training data. Redact usernames and local paths if
+        they are not needed to reproduce the problem.
+
+  - type: dropdown
+    id: stage
+    attributes:
+      label: Failing stage
+      options:
+        - Installation or native helper build
+        - doctor
+        - bootstrap or auth import
+        - Codex/OpenCode MCP startup
+        - health or eligibility
+        - activity tool call
+        - stream file handling
+        - Other
+    validations:
+      required: true
+
+  - type: input
+    id: version
+    attributes:
+      label: Bridge version or commit
+      placeholder: 0.1.0 or a commit SHA
+    validations:
+      required: true
+
+  - type: input
+    id: environment
+    attributes:
+      label: Environment
+      description: Include macOS, Apple chip, Node.js, and MCP client versions.
+      placeholder: macOS 15.x, M2, Node 24.x, Codex 0.x
+    validations:
+      required: true
+
+  - type: textarea
+    id: behavior
+    attributes:
+      label: What happened?
+      description: Include the command or MCP tool name and the redacted error.
+      placeholder: Describe the observed behavior and the expected result.
+    validations:
+      required: true
+
+  - type: textarea
+    id: diagnostics
+    attributes:
+      label: Redacted diagnostics
+      description: Optional. `strava-mcp-bridge doctor --json` is preferred. Review and redact local paths before posting.
+      render: json
+
+  - type: checkboxes
+    id: sensitive-data
+    attributes:
+      label: Sensitive data check
+      options:
+        - label: I confirmed this report contains no token values, Keychain dumps, GPS/location data, or personal activity payloads.
+          required: true

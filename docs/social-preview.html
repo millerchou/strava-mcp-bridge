@@ -1,0 +1,366 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>strava-mcp-bridge social preview</title>
+  <style>
+    * {
+      box-sizing: border-box;
+    }
+
+    html,
+    body {
+      width: 1280px;
+      height: 640px;
+      margin: 0;
+      overflow: hidden;
+      background: #f4f6f5;
+      color: #111514;
+      font-family: Inter, ui-sans-serif, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+    }
+
+    .canvas {
+      position: relative;
+      width: 1280px;
+      height: 640px;
+      padding: 60px 68px 54px;
+      border-top: 12px solid #fc4c02;
+      background:
+        linear-gradient(#dfe4e2 1px, transparent 1px),
+        linear-gradient(90deg, #dfe4e2 1px, transparent 1px),
+        #f4f6f5;
+      background-size: 48px 48px;
+    }
+
+    .canvas::after {
+      content: "";
+      position: absolute;
+      inset: 12px 0 0;
+      background: rgba(244, 246, 245, 0.88);
+      pointer-events: none;
+    }
+
+    .layout {
+      position: relative;
+      z-index: 1;
+      display: grid;
+      grid-template-columns: 1.13fr 0.87fr;
+      gap: 58px;
+      height: 100%;
+    }
+
+    .copy {
+      display: flex;
+      flex-direction: column;
+      justify-content: space-between;
+      min-width: 0;
+    }
+
+    .eyebrow {
+      display: inline-flex;
+      align-items: center;
+      gap: 10px;
+      width: fit-content;
+      color: #46504d;
+      font-size: 16px;
+      font-weight: 760;
+      line-height: 1;
+      text-transform: uppercase;
+    }
+
+    .eyebrow-mark {
+      width: 12px;
+      height: 12px;
+      background: #fc4c02;
+      border-radius: 2px;
+    }
+
+    h1 {
+      margin: 30px 0 18px;
+      max-width: 690px;
+      font-family: "SFMono-Regular", "Roboto Mono", Menlo, Consolas, monospace;
+      font-size: 58px;
+      font-weight: 790;
+      line-height: 1.06;
+      letter-spacing: 0;
+    }
+
+    .lead {
+      margin: 0;
+      max-width: 650px;
+      font-size: 30px;
+      font-weight: 640;
+      line-height: 1.26;
+    }
+
+    .lead strong {
+      color: #d33f00;
+      font-weight: 800;
+    }
+
+    .benefits {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 12px;
+      margin-top: 34px;
+    }
+
+    .benefit {
+      display: flex;
+      align-items: center;
+      gap: 9px;
+      min-height: 38px;
+      padding: 0 13px;
+      border: 1px solid #b7c0bd;
+      border-radius: 6px;
+      background: #ffffff;
+      color: #2d3533;
+      font-family: "SFMono-Regular", "Roboto Mono", Menlo, Consolas, monospace;
+      font-size: 14px;
+      font-weight: 680;
+    }
+
+    .check {
+      display: grid;
+      place-items: center;
+      width: 18px;
+      height: 18px;
+      border-radius: 50%;
+      background: #157f6e;
+      color: #ffffff;
+      font-size: 12px;
+      font-weight: 900;
+    }
+
+    .footer {
+      display: flex;
+      align-items: center;
+      gap: 17px;
+      color: #5d6865;
+      font-size: 15px;
+      font-weight: 700;
+    }
+
+    .footer b {
+      color: #111514;
+    }
+
+    .footer-rule {
+      width: 34px;
+      height: 2px;
+      background: #fc4c02;
+    }
+
+    .visual {
+      display: flex;
+      flex-direction: column;
+      justify-content: center;
+      gap: 18px;
+    }
+
+    .flow {
+      display: grid;
+      grid-template-columns: 1fr 28px 1fr 28px 1fr;
+      align-items: center;
+    }
+
+    .flow-node {
+      display: grid;
+      place-items: center;
+      min-height: 54px;
+      padding: 8px;
+      border: 1px solid #b7c0bd;
+      border-radius: 6px;
+      background: #ffffff;
+      color: #232a28;
+      text-align: center;
+      font-size: 14px;
+      font-weight: 760;
+      line-height: 1.18;
+    }
+
+    .flow-node.bridge {
+      border-color: #fc4c02;
+      box-shadow: inset 0 -4px 0 #fc4c02;
+    }
+
+    .arrow {
+      color: #76807d;
+      text-align: center;
+      font-size: 22px;
+      font-weight: 800;
+    }
+
+    .terminal {
+      min-height: 322px;
+      overflow: hidden;
+      border: 1px solid #222a28;
+      border-radius: 8px;
+      background: #151a19;
+      box-shadow: 12px 12px 0 #d9dfdd;
+    }
+
+    .terminal-bar {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      height: 48px;
+      padding: 0 18px;
+      border-bottom: 1px solid #343c3a;
+      color: #dce4e1;
+      font-family: "SFMono-Regular", "Roboto Mono", Menlo, Consolas, monospace;
+      font-size: 13px;
+    }
+
+    .terminal-status {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+
+    .status-dot {
+      width: 9px;
+      height: 9px;
+      border-radius: 50%;
+      background: #4bc1a4;
+    }
+
+    .terminal-body {
+      padding: 22px 22px 18px;
+      font-family: "SFMono-Regular", "Roboto Mono", Menlo, Consolas, monospace;
+    }
+
+    .command {
+      margin-bottom: 18px;
+      color: #f1f5f3;
+      font-size: 15px;
+      line-height: 1.45;
+    }
+
+    .prompt {
+      color: #fc7135;
+      font-weight: 800;
+    }
+
+    .result {
+      display: grid;
+      grid-template-columns: 1fr auto;
+      gap: 9px 18px;
+      color: #c8d1ce;
+      font-size: 13px;
+      line-height: 1.35;
+    }
+
+    .result strong {
+      color: #ffffff;
+      font-weight: 720;
+    }
+
+    .ok {
+      color: #65d4b8;
+      font-weight: 760;
+    }
+
+    .chart {
+      position: relative;
+      height: 108px;
+      margin-top: 22px;
+      border-top: 1px solid #343c3a;
+      border-bottom: 1px solid #343c3a;
+    }
+
+    .chart svg {
+      display: block;
+      width: 100%;
+      height: 100%;
+    }
+
+    .chart-label {
+      position: absolute;
+      top: 9px;
+      left: 0;
+      color: #8f9b97;
+      font-size: 11px;
+      font-weight: 700;
+      text-transform: uppercase;
+    }
+
+    .terminal-footer {
+      display: flex;
+      justify-content: space-between;
+      padding-top: 14px;
+      color: #95a19d;
+      font-size: 11px;
+      font-weight: 700;
+      text-transform: uppercase;
+    }
+
+    .terminal-footer span:last-child {
+      color: #65d4b8;
+    }
+  </style>
+</head>
+<body>
+  <main class="canvas">
+    <div class="layout">
+      <section class="copy">
+        <div>
+          <div class="eyebrow">
+            <span class="eyebrow-mark"></span>
+            Open source for Apple Silicon macOS
+          </div>
+          <h1>strava-mcp-bridge</h1>
+          <p class="lead">Official Strava MCP for <strong>Codex</strong>, without creating a developer app.</p>
+          <div class="benefits">
+            <div class="benefit"><span class="check">&#10003;</span> Local Keychain</div>
+            <div class="benefit"><span class="check">&#10003;</span> Streams stay local</div>
+            <div class="benefit"><span class="check">&#10003;</span> GPS blocked</div>
+          </div>
+        </div>
+        <div class="footer">
+          <span class="footer-rule"></span>
+          <span><b>millerchou</b> / strava-mcp-bridge</span>
+        </div>
+      </section>
+
+      <section class="visual" aria-label="Bridge workflow preview">
+        <div class="flow">
+          <div class="flow-node">Official<br>Strava MCP</div>
+          <div class="arrow">&rarr;</div>
+          <div class="flow-node bridge">Local<br>bridge</div>
+          <div class="arrow">&rarr;</div>
+          <div class="flow-node">Codex /<br>OpenCode</div>
+        </div>
+
+        <div class="terminal">
+          <div class="terminal-bar">
+            <span>training-sync</span>
+            <span class="terminal-status"><span class="status-dot"></span> connected</span>
+          </div>
+          <div class="terminal-body">
+            <div class="command"><span class="prompt">&gt;</span> pull new rides and rebuild dashboard</div>
+            <div class="result">
+              <span><strong>3 rides</strong> discovered</span><span class="ok">OK</span>
+              <span>activity streams saved locally</span><span class="ok">LOCAL</span>
+              <span>location fields returned to context</span><span class="ok">0</span>
+            </div>
+            <div class="chart">
+              <span class="chart-label">training load</span>
+              <svg viewBox="0 0 440 108" role="img" aria-label="Synthetic training load chart">
+                <path d="M0 83 H440 M0 54 H440 M0 25 H440" fill="none" stroke="#2e3835" stroke-width="1"/>
+                <path d="M0 88 C35 84,58 73,89 76 C118 79,139 53,170 58 C200 63,221 48,251 45 C282 42,302 24,334 31 C366 38,392 16,440 20" fill="none" stroke="#fc7135" stroke-width="4" stroke-linecap="round"/>
+                <path d="M0 94 C48 92,76 88,111 86 C151 83,188 78,229 73 C272 68,310 62,352 58 C389 54,417 50,440 46" fill="none" stroke="#65d4b8" stroke-width="3" stroke-linecap="round"/>
+              </svg>
+            </div>
+            <div class="terminal-footer">
+              <span>full arrays omitted from context</span>
+              <span>privacy defaults active</span>
+            </div>
+          </div>
+        </div>
+      </section>
+    </div>
+  </main>
+</body>
+</html>

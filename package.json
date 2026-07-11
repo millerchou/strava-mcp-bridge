@@ -1,7 +1,7 @@
 {
   "name": "strava-mcp-bridge",
   "version": "0.1.0",
-  "description": "Local stdio bridge that lets Codex, OpenCode, and other stdio MCP clients use the official Strava MCP server.",
+  "description": "Local privacy bridge for using Strava's official MCP from Codex without creating a Strava developer app.",
   "type": "commonjs",
   "author": "millerchou <31427924+millerchou@users.noreply.github.com>",
   "homepage": "https://github.com/millerchou/strava-mcp-bridge#readme",
@@ -45,7 +45,12 @@
     "strava",
     "codex",
     "opencode",
-    "claude-code"
+    "claude-code",
+    "fitness-data",
+    "oauth",
+    "macos",
+    "privacy",
+    "training-analysis"
   ],
   "license": "MIT",
   "publishConfig": {

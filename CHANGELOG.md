@@ -15,6 +15,11 @@ project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Changed
 
+- Reworked the README around user outcomes, fit, privacy, and alternatives, with
+  a shorter first-time path and an explicit comparison table.
+- Made npm release publishing idempotent and documented the one-time package
+  claim and trusted-publisher setup.
+- Added a redaction-first bug report form for early adopter diagnostics.
 - Pin official MCP/OAuth endpoints by default and bind refresh grants to the MCP
   resource.
 - Fail closed for opaque tool-response content and sanitize upstream errors.
