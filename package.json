@@ -14,7 +14,7 @@
     "url": "git+https://github.com/millerchou/strava-mcp-bridge.git"
   },
   "bin": {
-    "strava-mcp-bridge": "./bin/strava-mcp-bridge.js"
+    "strava-mcp-bridge": "bin/strava-mcp-bridge.js"
   },
   "scripts": {
     "build:keychain-helper": "sh scripts/build-keychain-helper.sh",
