@@ -295,8 +295,8 @@ deauthorize the connection in Strava's connected-app settings.
 - Official Strava MCP, not a REST API reimplementation
 - First OAuth bootstrap still requires Claude Code
 - No verified standards-only dynamic client registration path exists today
-- Official MCP Registry metadata is prepared; publication waits for the first
-  npm release
+- Published in the official MCP Registry as
+  `io.github.millerchou/strava-mcp-bridge@0.1.0`
 - Strava [says support for other clients is planned](https://support.strava.com/en-us/articles/15401526-strava-api-and-mcp-faq)
 
 The restriction appears at OAuth client registration/token issuance, not at the

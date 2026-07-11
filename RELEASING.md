@@ -108,6 +108,9 @@ The repository includes `server.json`, and `package.json.mcpName` matches its
 server identity. The MCP Registry verifies this field from the public npm
 artifact, so registry publication must happen after the npm package exists.
 
+`io.github.millerchou/strava-mcp-bridge@0.1.0` was published to the official
+Registry after the first npm release.
+
 1. Confirm the npm package and `server.json` versions match.
 2. Install the official `mcp-publisher` CLI using the current registry docs.
 3. Authenticate interactively:
